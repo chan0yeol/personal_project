@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      font-size: 12px;
+      background: #1e1e1e;
+      color: #d4d4d4;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      background: #252526;
+      border-bottom: 1px solid #3c3c3c;
+      flex-shrink: 0;
+    }
+
+    .tab-bar {
+      display: flex;
+      background: #2d2d2d;
+      border-bottom: 1px solid #3c3c3c;
+      flex-shrink: 0;
+    }
+
+    .tab-btn {
+      padding: 5px 18px;
+      border: none;
+      background: transparent;
+      color: #888;
+      cursor: pointer;
+      font-size: 12px;
+      border-bottom: 2px solid transparent;
+    }
+
+    .tab-btn.active {
+      color: #d4d4d4;
+      border-bottom-color: #0e639c;
+    }
+
+    .filter-btn {
+      padding: 2px 8px;
+      border: 1px solid #3c3c3c;
+      background: #2d2d2d;
+      color: #d4d4d4;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 11px;
+    }
+
+    .filter-btn.active { background: #0e639c; border-color: #0e639c; color: #fff; }
+
+    input#search {
+      flex: 1;
+      padding: 2px 8px;
+      background: #3c3c3c;
+      border: 1px solid #555;
+      color: #d4d4d4;
+      border-radius: 3px;
+      font-size: 11px;
+      outline: none;
+    }
+
+    select#programFilter {
+      padding: 2px 6px;
+      background: #3c3c3c;
+      border: 1px solid #555;
+      color: #d4d4d4;
+      border-radius: 3px;
+      font-size: 11px;
+      outline: none;
+      max-width: 140px;
+    }
+
+    button.action-btn {
+      padding: 2px 10px;
+      border: none;
+      color: #fff;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 11px;
+    }
+
+    #scanBtn     { background: #2d7a2d; }
+    #clearBtn    { background: #c72e2e; }
+    #instrumentBtn { background: #7a5a2d; }
+    #clearLiveBtn  { background: #c72e2e; }
+
+    button.action-btn:disabled { opacity: 0.5; cursor: default; }
+
+    .count { color: #888; font-size: 11px; margin-left: auto; }
+
+    .tab-content { display: none; flex: 1; flex-direction: column; overflow: hidden; }
+    .tab-content.active { display: flex; }
+
+    .scroll-area { overflow-y: auto; flex: 1; }
+
+    table { width: 100%; border-collapse: collapse; }
+
+    thead { background: #2d2d2d; position: sticky; top: 0; z-index: 1; }
+
+    th {
+      padding: 5px 10px;
+      text-align: left;
+      color: #888;
+      font-weight: normal;
+      border-bottom: 1px solid #3c3c3c;
+    }
+
+    td { padding: 4px 10px; border-bottom: 1px solid #2a2a2a; }
+    tr:hover td { background: #2a2d2e; cursor: pointer; }
+
+    .badge { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: bold; }
+    .badge-HDL { background: #264f78; color: #9cdcfe; }
+    .badge-BTN { background: #3a2a00; color: #ffcc66; }
+    .badge-FLD { background: #1e3a1e; color: #6abf69; }
+    .badge-GRD { background: #3a1a3a; color: #d8a0d8; }
+
+    .fn-name { color: #dcdcaa; }
+    .event-name { color: #ce9178; font-size: 10px; }
+    .time { color: #666; }
+
+    tr.no-data td { text-align: center; color: #555; padding: 30px; }
+
+    /* 실시간 탭 */
+    #liveList {
+      list-style: none;
+      padding: 6px 0;
+    }
+
+    #liveList li {
+      padding: 3px 12px;
+      border-bottom: 1px solid #2a2a2a;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      font-size: 11px;
+    }
+
+    #liveList li:hover { background: #2a2d2e; }
+
+    .live-time { color: #666; min-width: 70px; }
+    .live-id   { color: #9cdcfe; }
+    .live-fn   { color: #dcdcaa; }
+    .live-ev   { color: #ce9178; font-size: 10px; }
+    .live-prog  { color: #b5b5b5; font-size: 10px; background: #2d2d2d; padding: 1px 5px; border-radius: 3px; }
+    .prog-id    { color: #b5b5b5; font-size: 10px; }
+    .live-count { background: #0e639c; color: #fff; font-size: 10px; font-weight: bold; padding: 1px 5px; border-radius: 8px; min-width: 20px; text-align: center; }
+    .live-dur   { font-size: 10px; padding: 1px 5px; border-radius: 3px; }
+    .live-dur.fast { color: #6abf69; }
+    .live-dur.slow { color: #f87171; font-weight: bold; }
+
+    .live-empty { padding: 30px; text-align: center; color: #555; }
+
+    #detail {
+      border-top: 1px solid #3c3c3c;
+      background: #252526;
+      padding: 8px 12px;
+      flex-shrink: 0;
+      display: none;
+      font-size: 11px;
+      color: #9cdcfe;
+      max-height: 240px;
+      overflow-y: auto;
+    }
+
+    /* ── AI 가이드 ── */
+    #ai-key-area {
+      padding: 6px 10px;
+      background: #252526;
+      border-bottom: 1px solid #3c3c3c;
+      display: none;
+      gap: 6px;
+      align-items: center;
+    }
+    #ai-key-area input {
+      flex: 1;
+      padding: 2px 8px;
+      background: #3c3c3c;
+      border: 1px solid #555;
+      color: #d4d4d4;
+      border-radius: 3px;
+      font-size: 11px;
+      outline: none;
+    }
+    #ai-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .ai-msg { display: flex; flex-direction: column; gap: 4px; }
+    .ai-msg-role { font-size: 10px; font-weight: bold; }
+    .ai-msg.user .ai-msg-role { color: #6abf69; }
+    .ai-msg.assistant .ai-msg-role { color: #9cdcfe; }
+    .ai-msg-body { font-size: 11px; line-height: 1.6; color: #d4d4d4; white-space: pre-wrap; word-break: break-word; }
+    .ai-code-block {
+      position: relative;
+      background: #1a1a1a;
+      border-radius: 4px;
+      margin: 4px 0;
+      overflow: hidden;
+    }
+    .ai-code-block pre {
+      margin: 0;
+      padding: 8px 10px;
+      font-size: 11px;
+      line-height: 1.5;
+      color: #ce9178;
+      overflow-x: auto;
+      white-space: pre;
+    }
+    .ai-copy-btn {
+      position: absolute;
+      top: 4px; right: 4px;
+      padding: 1px 7px;
+      background: #3c3c3c;
+      border: none;
+      color: #aaa;
+      border-radius: 3px;
+      font-size: 10px;
+      cursor: pointer;
+    }
+    .ai-copy-btn:hover { background: #555; color: #fff; }
+    .ai-inline-code { background: #2d2d2d; padding: 1px 4px; border-radius: 3px; font-family: monospace; color: #ce9178; }
+    #ai-input-area {
+      display: flex;
+      gap: 6px;
+      padding: 8px 10px;
+      border-top: 1px solid #3c3c3c;
+      background: #252526;
+      flex-shrink: 0;
+    }
+    #aiInput {
+      flex: 1;
+      background: #3c3c3c;
+      border: 1px solid #555;
+      color: #d4d4d4;
+      border-radius: 3px;
+      font-size: 11px;
+      padding: 6px 8px;
+      resize: none;
+      outline: none;
+      font-family: 'Segoe UI', sans-serif;
+      line-height: 1.4;
+      min-height: 52px;
+      max-height: 120px;
+    }
+    #aiSend { background: #0e639c; align-self: flex-end; padding: 6px 12px; }
+    #aiSend:disabled { opacity: 0.5; cursor: default; }
+    .ai-empty { color: #555; font-size: 11px; text-align: center; padding: 30px 20px; line-height: 1.8; }
+    #ai-context-card {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 8px;
+      background: #1e2a1e;
+      border: 1px solid #2d5a2d;
+      border-radius: 4px;
+      margin-bottom: 6px;
+      font-size: 10px;
+      flex-wrap: wrap;
+    }
+    #ai-context-card .ctx-source { color: #6abf69; }
+    #ai-context-card .ctx-no-source { color: #555; }
+    #clearContextBtn { margin-left:auto; background:none; border:none; color:#555; cursor:pointer; font-size:12px; padding:0 2px; }
+    #clearContextBtn:hover { color: #d4d4d4; }
+    #askAiBtn { padding:1px 8px; background:#1a4a1a; border:1px solid #2d7a2d; color:#6abf69; border-radius:3px; cursor:pointer; font-size:11px; }
+    #askAiBtn:hover { background:#2d5a2d; }
+
+    /* 비활성화 토글 */
+    .dis-toggle { background:none; border:none; cursor:pointer; padding:0 4px; font-size:11px; color:#4caf50; line-height:1; }
+    .dis-toggle.off { color:#555; }
+    tr.ev-disabled td { opacity: 0.35; }
+
+    /* 엘리먼트 피커 하이라이트 */
+    @keyframes uni-highlight { 0%,100% { background:transparent } 50% { background:#1e3a5a; } }
+    tr.ev-highlight td { animation: uni-highlight 0.7s ease 3; }
+
+    /* $nst 탭 */
+    #nstList { list-style:none; padding:6px 0; }
+    .nst-item { border-bottom:1px solid #2a2a2a; font-size:11px; }
+    .nst-row { display:flex; align-items:center; gap:8px; padding:4px 12px; cursor:pointer; }
+    .nst-row:hover { background:#2a2d2e; }
+    .nst-time { color:#666; min-width:70px; }
+    .nst-method { color:#ce9178; font-size:10px; min-width:150px; }
+    .nst-svc { color:#9cdcfe; font-weight:bold; }
+    .nst-summary { color:#888; font-size:10px; font-family:Consolas,monospace; }
+    .nst-prog { color:#b5b5b5; font-size:10px; background:#2d2d2d; padding:1px 5px; border-radius:3px; }
+    .nst-dur { font-size:10px; padding:1px 5px; border-radius:3px; margin-left:auto; }
+    .nst-dur.fast { color:#6abf69; }
+    .nst-dur.slow { color:#f87171; font-weight:bold; }
+    .nst-status-pending { color:#888; font-size:10px; margin-left:auto; }
+    .nst-detail { display:none; padding:6px 12px 10px 12px; background:#1a1a1a; border-top:1px solid #2a2a2a; }
+    .nst-detail.open { display:block; }
+    .nst-detail-section { margin-bottom:6px; }
+    .nst-detail-label { color:#888; font-size:10px; margin-bottom:2px; }
+    .nst-detail-val { font-size:10px; color:#d4d4d4; font-family:Consolas,monospace; white-space:pre-wrap; word-break:break-all; max-height:120px; overflow-y:auto; background:#111; padding:4px 6px; border-radius:3px; }
+    .nst-empty { padding:30px; text-align:center; color:#555; font-size:11px; }
+
+    /* 문서 생성 체크박스 */
+    .doc-check { cursor:pointer; accent-color:#0e639c; width:12px; height:12px; }
+    th .doc-check-all { cursor:pointer; accent-color:#0e639c; width:12px; height:12px; }
+
+    /* 실시간 탭 - 실행 파라미터 */
+    .live-args { color:#666; font-size:10px; font-family:monospace; max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+    /* badge-PAGE */
+    .badge-PAGE { background: #1a3a3a; color: #4ec9b0; }
+    /* badge-NST */
+    .badge-NST  { background: #3a1a00; color: #f0a060; }
+
+    /* AI 서브탭 */
+    .ai-sub-tabs { display:flex; background:#252526; border-bottom:1px solid #3c3c3c; flex-shrink:0; }
+    .ai-sub-tab { padding:4px 14px; border:none; background:transparent; color:#888; cursor:pointer; font-size:11px; border-bottom:2px solid transparent; }
+    .ai-sub-tab.active { color:#d4d4d4; border-bottom-color:#0e639c; }
+
+    /* 패턴 카드 */
+    .pattern-filters { display:flex; gap:6px; padding:6px 10px; background:#252526; border-bottom:1px solid #3c3c3c; flex-shrink:0; flex-wrap:wrap; }
+    .pattern-filter-btn { padding:2px 8px; border:1px solid #3c3c3c; background:#2d2d2d; color:#d4d4d4; border-radius:3px; cursor:pointer; font-size:11px; }
+    .pattern-filter-btn.active { background:#0e639c; border-color:#0e639c; color:#fff; }
+
+    #pattern-grid { overflow-y:auto; flex:1; padding:8px 10px; display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:8px; align-content:start; }
+
+    .pattern-card { background:#252526; border:1px solid #3c3c3c; border-radius:4px; padding:8px 10px; }
+    .pattern-card:hover { border-color:#555; }
+    .pattern-card-header { display:flex; align-items:center; gap:6px; margin-bottom:4px; }
+    .pattern-card-title { font-size:11px; color:#d4d4d4; font-weight:bold; }
+    .pattern-card-desc { font-size:10px; color:#888; margin-bottom:6px; line-height:1.4; }
+    .pattern-card-code { background:#1a1a1a; border-radius:3px; padding:5px 8px; font-size:10px; color:#ce9178; font-family:'Consolas', monospace; overflow-x:auto; white-space:pre; max-height:90px; overflow-y:hidden; margin-bottom:6px; position:relative; }
+    .pattern-card-actions { display:flex; gap:4px; justify-content:flex-end; }
+    .pattern-copy-btn { padding:1px 7px; background:#3c3c3c; border:1px solid #555; color:#aaa; border-radius:3px; cursor:pointer; font-size:10px; }
+    .pattern-copy-btn:hover { background:#555; color:#fff; }
+    .pattern-ask-btn { padding:1px 7px; background:#1a4a1a; border:1px solid #2d7a2d; color:#6abf69; border-radius:3px; cursor:pointer; font-size:10px; }
+    .pattern-ask-btn:hover { background:#2d5a2d; }
+
+    /* AI 질문 템플릿 */
+    #ai-templates { display:flex; gap:4px; flex-wrap:wrap; margin-bottom:6px; }
+    #ai-templates button { padding:2px 9px; background:#2d2d2d; border:1px solid #3c3c3c; color:#b5b5b5; border-radius:12px; cursor:pointer; font-size:10px; }
+    #ai-templates button:hover { background:#3c3c3c; color:#d4d4d4; }
+
+    /* 로딩 스피너 */
+    .loading-spinner { display:inline-block; width:10px; height:10px; border:2px solid #555; border-top-color:#9cdcfe; border-radius:50%; animation:uni-spin 0.8s linear infinite; vertical-align:middle; }
+    @keyframes uni-spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <!-- 등록 탭 툴바 -->
+  <div class="toolbar" id="toolbar-registered">
+    <span style="font-weight:bold;color:#9cdcfe">UNI Events</span>
+    <button class="filter-btn active" data-type="ALL">ALL</button>
+    <button class="filter-btn" data-type="HDL">Handler</button>
+    <button class="filter-btn" data-type="BTN">Button</button>
+    <button class="filter-btn" data-type="FLD">Field</button>
+    <button class="filter-btn" data-type="GRD">Grid</button>
+    <input id="search" type="text" placeholder="ID 또는 함수명 검색...">
+    <select id="programFilter"><option value="">모든 프로그램</option></select>
+    <button id="pickBtn" class="action-btn" style="background:#4a3a6a">고르기</button>
+    <button id="scanBtn" class="action-btn">Scan</button>
+    <button id="docBtn" class="action-btn" style="background:#5a3a7a">문서 생성</button>
+    <button id="clearBtn" class="action-btn">Clear</button>
+    <span class="count" id="count">0 events</span>
+  </div>
+
+  <!-- 실시간 탭 툴바 -->
+  <div class="toolbar" id="toolbar-realtime" style="display:none">
+    <span style="font-weight:bold;color:#9cdcfe">실시간</span>
+    <button id="instrumentBtn" class="action-btn">감지 활성화</button>
+    <button id="clearLiveBtn" class="action-btn">Clear</button>
+    <span class="count" id="liveCount">0 fired</span>
+  </div>
+
+  <!-- $nst 탭 툴바 -->
+  <div class="toolbar" id="toolbar-nst" style="display:none">
+    <span style="font-weight:bold;color:#ce9178">$nst 호출</span>
+    <input id="nstSearch" type="text" placeholder="서비스 ID · f4Key 검색..." style="flex:1;padding:2px 8px;background:#3c3c3c;border:1px solid #555;color:#d4d4d4;border-radius:3px;font-size:11px;outline:none;max-width:180px">
+    <select id="nstProgFilter" style="padding:2px 6px;background:#3c3c3c;border:1px solid #555;color:#d4d4d4;border-radius:3px;font-size:11px;outline:none;max-width:140px">
+      <option value="">모든 프로그램</option>
+    </select>
+    <button id="nstSlowBtn" class="filter-btn" data-slow="0">느린 것만</button>
+    <button id="clearNstBtn" class="action-btn" style="background:#c72e2e">Clear</button>
+    <span class="count" id="nstCount">0 calls</span>
+  </div>
+
+  <!-- AI 가이드 툴바 -->
+  <div class="toolbar" id="toolbar-ai" style="display:none">
+    <span style="font-weight:bold;color:#9cdcfe">AI 가이드</span>
+    <button id="aiKeyToggle" class="action-btn" style="background:#555">🔑 API Key</button>
+    <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:#888;cursor:pointer">
+      <input type="checkbox" id="aiUseContext" checked> 현재 화면 컨텍스트
+    </label>
+    <button id="clearAiBtn" class="action-btn" style="background:#c72e2e">Clear</button>
+  </div>
+
+  <div class="tab-bar">
+    <button class="tab-btn active" data-tab="registered">등록</button>
+    <button class="tab-btn" data-tab="realtime">실시간</button>
+    <button class="tab-btn" data-tab="nst">$nst</button>
+    <button class="tab-btn" data-tab="ai">AI 가이드</button>
+  </div>
+
+  <!-- 등록 탭 -->
+  <div class="tab-content active" id="tab-registered">
+    <div class="scroll-area">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:16px" title="문서 생성 대상 전체 선택/해제"><input type="checkbox" class="doc-check-all" id="docCheckAll"></th>
+            <th style="width:20px"></th>
+            <th style="width:60px">타입</th>
+            <th style="width:100px">프로그램 ID</th>
+            <th>ID</th>
+            <th>함수명</th>
+            <th style="width:60px">이벤트</th>
+            <th style="width:70px">시간</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody">
+          <tr class="no-data"><td colspan="7">이벤트 없음 — Scan 또는 페이지 새로고침</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div id="detail"></div>
+  </div>
+
+  <!-- 실시간 탭 -->
+  <div class="tab-content" id="tab-realtime">
+    <div class="scroll-area" id="liveScroll">
+      <p class="live-empty" id="liveEmpty">감지 활성화 후 핸들러가 실행되면 여기에 표시됩니다</p>
+      <ul id="liveList"></ul>
+    </div>
+  </div>
+
+  <!-- $nst 탭 -->
+  <div class="tab-content" id="tab-nst">
+    <div class="scroll-area" id="nstScroll">
+      <p class="nst-empty" id="nstEmpty">$nst 호출이 발생하면 여기에 표시됩니다</p>
+      <ul id="nstList"></ul>
+    </div>
+  </div>
+
+  <!-- AI 가이드 탭 -->
+  <div class="tab-content" id="tab-ai">
+    <div id="ai-key-area">
+      <select id="aiProvider" style="background:#2d2d2d;color:#d4d4d4;border:1px solid #3c3c3c;padding:3px 6px;font-size:11px;border-radius:3px">
+        <option value="groq">Groq</option>
+        <option value="upstage">Upstage</option>
+      </select>
+      <span style="font-size:11px;color:#888;white-space:nowrap" id="aiKeyLabel">API Key</span>
+      <input id="aiKeyInput" type="password" placeholder="gsk_...">
+      <span style="font-size:11px;color:#888;white-space:nowrap">RAG URL</span>
+      <input id="ragUrlInput" type="text" placeholder="http://localhost:3100" style="max-width:160px">
+      <button id="aiKeySave" class="action-btn" style="background:#0e639c;white-space:nowrap">저장</button>
+    </div>
+
+    <!-- AI 서브탭 -->
+    <div class="ai-sub-tabs">
+      <button class="ai-sub-tab active" data-subtab="chat">채팅</button>
+      <button class="ai-sub-tab" data-subtab="patterns">패턴 카드</button>
+    </div>
+
+    <!-- 채팅 뷰 -->
+    <div id="ai-chat-view" style="display:flex;flex-direction:column;flex:1;overflow:hidden">
+      <div id="ai-messages">
+        <p class="ai-empty">API Key를 설정하고 질문을 입력하세요.<br>예: 그리드에서 QTY 변경 시 TOTAL 자동 계산하는 코드 알려줘</p>
+      </div>
+      <div id="ai-input-area">
+        <textarea id="aiInput" placeholder="예: 버튼 클릭 시 그리드 체크된 행만 가져오는 코드" rows="3"></textarea>
+        <button id="aiSend" class="action-btn">전송</button>
+      </div>
+    </div>
+
+    <!-- 패턴 카드 뷰 -->
+    <div id="ai-patterns-view" style="display:none;flex-direction:column;flex:1;overflow:hidden">
+      <div class="pattern-filters">
+        <button class="pattern-filter-btn active" data-cat="ALL">전체</button>
+        <button class="pattern-filter-btn" data-cat="GRD">Grid</button>
+        <button class="pattern-filter-btn" data-cat="FLD">Field</button>
+        <button class="pattern-filter-btn" data-cat="BTN">Button</button>
+        <button class="pattern-filter-btn" data-cat="HDL">Handler</button>
+        <button class="pattern-filter-btn" data-cat="PAGE">Page</button>
+        <button class="pattern-filter-btn" data-cat="NST">$nst</button>
+      </div>
+      <div id="pattern-grid"></div>
+    </div>
+  </div>
+
+  <!-- 문서 생성 진행 오버레이 -->
+  <div id="doc-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:200;align-items:center;justify-content:center">
+    <div style="background:#252526;border:1px solid #3c3c3c;border-radius:6px;padding:24px 32px;min-width:300px;text-align:center">
+      <div id="doc-progress-text" style="color:#d4d4d4;font-size:12px;margin-bottom:12px">준비 중...</div>
+      <div style="background:#3c3c3c;border-radius:3px;height:4px;overflow:hidden">
+        <div id="doc-progress-bar" style="height:100%;background:#0e639c;width:0%;transition:width 0.3s"></div>
+      </div>
+      <div style="margin-top:10px;color:#555;font-size:10px">완료까지 잠시 대기해주세요</div>
+    </div>
+  </div>
+
+  <script src="panel.js"></script>
+</body>
+</html>

@@ -1,0 +1,513 @@
+IP 주소	고객사	구분	호스트명	MAC 주소	호스트 서버 IP
+192.168.12.11
+대원제약
+daewon
+-	-	-	-
+192.168.12.12
+디앤에이모터스
+dnamotors
+-	-	-	-
+192.168.12.14
+스타벅스커피코리아
+starbucks
+-	-	-	-
+192.168.12.15
+시몬느
+simone
+-	-	-	-
+192.168.12.16
+신세계까사
+casamia
+-	-	-	-
+192.168.12.17
+신세계푸드
+shinsegae-food
+-	-	-	-
+192.168.12.18
+아주스틸
+aju-steel
+-	-	-	-
+192.168.12.19
+에이블씨엔씨
+able-cnc
+-	-	-	-
+192.168.12.20
+유니드
+unid
+-	-	-	-
+192.168.12.20
+유니드비티플러스
+unidbtplus
+-	-	-	-
+192.168.12.22
+유비쿼스
+ubiquoss
+-	-	-	-
+192.168.12.23
+일진글로벌
+iljin
+-	-	-	-
+192.168.12.24
+제테마
+jetema
+-	-	-	-
+192.168.12.25
+폴리미래
+polymirae
+-	-	-	-
+192.168.12.28
+휴니드테크놀러지스
+huneed
+-	-	-	-
+192.168.12.29
+직방
+zigbang
+-	-	-	-
+192.168.12.32
+에이치엠엠
+hmm
+HyperV	hmm	00-15-5D-0B-13-54	192.168.11.8
+192.168.12.35
+피에스케이
+psk
+HyperV	local-psk	00-15-5D-01-08-89	192.168.11.8
+192.168.12.35
+에이치엠엠
+hmm
+HyperV		00-15-5D-0B-13-15	192.168.11.8
+192.168.12.51
+경창산업
+kyungchang
+HyperV	local-kyungchang	00-15-5D-01-08-21	192.168.11.8
+192.168.12.52
+금화정수
+geumhwa
+HyperV	local-geumhwa	00-15-5D-01-08-75	192.168.11.8
+192.168.12.53
+녹십자
+greencross
+HyperV	local-gc	00-15-5D-01-08-67	192.168.11.8
+192.168.12.55
+대동공업
+daedong
+HyperV	local-daedong	00-15-5D-00-C0-24	192.168.11.8
+192.168.12.56
+매그나칩반도체
+magnachip
+HyperV	local-magnachip	00-15-5D-00-C0-18	192.168.11.8
+192.168.12.57
+매그나칩반도체
+magnachip
+HyperV	local-magnachip2	00-15-5D-01-08-6C	192.168.11.8
+192.168.12.58
+무신사
+musinsa
+HyperV	local-musinsa	00-15-5D-00-C0-26	192.168.11.8
+192.168.12.59
+삼익티에치케이
+samickthk
+-	-	-	-
+192.168.12.60
+세아제강
+seah
+HyperV	local-seah	00-15-5D-01-08-62	192.168.11.8
+192.168.12.61
+솔브레인
+soulbrain
+HyperV	local-soulbrain	00-15-5D-01-08-32	192.168.11.8
+192.168.12.62
+에코비트
+ecobit
+HyperV	local-tsk	00-15-5D-01-08-15	192.168.11.8
+192.168.12.63
+오뚜기
+ottogi
+HyperV	local-ottogi	00-15-5D-01-08-3B	192.168.11.8
+192.168.12.64
+와이지원
+yg1
+HyperV	local-yg1	00-15-5D-01-08-3E	192.168.11.8
+192.168.12.65
+유한양행
+yuhan
+HyperV	local-yuhan	00-15-5D-01-08-56	192.168.11.8
+192.168.12.66
+이원
+e1
+HyperV	local-e1	00-15-5D-01-08-0B	192.168.11.8
+192.168.12.67
+영원아웃도어
+youngone-outdoor
+HyperV	local-youngone-outdoor	00-15-5D-01-08-7E	192.168.11.8
+192.168.12.68
+여천NCC
+yncc
+HyperV	local-yncc	00-15-5D-0B-08-37	192.168.11.8
+192.168.12.69
+캐논코리아
+canon
+HyperV	local-canon	00-15-5D-01-08-7B	192.168.11.8
+192.168.12.71
+토니모리
+tonymoly
+HyperV	local-tonymoly	00-15-5D-01-08-2D	192.168.11.8
+192.168.12.72
+티시스
+tsis
+HyperV	local-tsis	00-15-5D-01-08-13	192.168.11.8
+192.168.12.73
+풍산
+poongsan
+HyperV	local-poongsan	00-15-5D-01-08-5E	192.168.11.8
+192.168.12.74
+피아이첨단소재
+pimaterials
+HyperV	local-pimaterials	00-15-5D-01-08-5C	192.168.11.8
+192.168.12.75
+한온시스템
+hanon
+HyperV	local-hanon	00-15-5D-01-08-58	192.168.11.8
+192.168.12.76
+한화솔루션케미칼부문
+hanwha-hcc
+HyperV	local-hanwhahcc	00-15-5D-00-17-5C	192.168.11.8
+192.168.12.77
+한화솔루션큐에너지
+hanwha-qenergy
+HyperV	local-hanwha-qenergy	00-15-5D-01-08-7A	192.168.11.8
+192.168.12.78
+한화임팩트
+hanwha-impact
+HyperV	local-hanwha-impact	00-15-5D-00-C0-22	192.168.11.8
+192.168.12.79
+롯데알미늄
+lotteal
+HyperV	local-lotteal	00-15-5D-01-08-7F	192.168.11.8
+192.168.12.80
+영원무역
+youngone
+HyperV	local-youngone	00-15-5D-00-C0-36	192.168.11.8
+192.168.12.81
+녹십자
+greencross
+노트북	1100PN0109	BC-54-2F-D0-7C-08	-
+192.168.12.82
+한화큐셀
+hanwha-qcells
+HyperV	local-hanwha-qcells	00-15-5D-01-08-8B	192.168.11.8
+192.168.12.83
+한화인사이트
+hanwha-insight
+HyperV	local-hanwha-insight	00-15-5D-01-08-8E	192.168.11.8
+192.168.12.84
+코스알엑스
+COSRX
+노트북	local-cosrx	00-15-5D-00-C0-3C	-
+192.168.12.85
+바디프랜드
+bodyfriend
+HyperV	local-bodyfriend	00-15-5D-01-08-94	192.168.11.8
+192.168.12.86
+넥센타이어
+nexentire
+HyperV	local-nexentire	00-15-5D-00-C0-3E	192.168.11.8
+192.168.12.98
+씨앤씨인터내셔널
+cncinternational
+HyperV	local-cncinter	00-15-5D-0B-08-46	192.168.11.8
+192.168.12.99
+케이티앤지
+ktng
+HyperV	local-ktng	-	192.168.11.8
+192.168.12.101
+엘에스네트웍스
+lsnetworks
+-	-	-	-
+192.168.12.102
+경동그룹
+kyoungdong
+-		00-09-0F-FE-00-01	-
+192.168.12.103
+경보제약
+kyoungbo
+-	-	-	-
+192.168.12.104
+광동제약
+kwangdong
+-	-	-	-
+192.168.12.105
+남해화학
+nhchem
+-	-	-	-
+192.168.12.106
+동화기업
+dongwha
+-	-	-	-
+192.168.12.107
+디엘케미칼
+daelim
+-	-	-	-
+192.168.12.108
+락앤락
+locknlock
+-	-	-	-
+192.168.12.109
+메디톡스
+medytox
+-	-	-	-
+192.168.12.110
+세방기업
+sebang
+-	-	-	-
+192.168.12.111
+슈피겐코리아
+spigen
+-	-	-	-
+192.168.12.112
+심팩
+simpac
+-	-	-	-
+192.168.12.113
+애터미
+atomy
+-	-	-	-
+192.168.12.114
+어프로티움
+approtium
+-	-	-	-
+192.168.12.115
+에넥스
+enex
+-	-	-	-
+192.168.12.117
+와이솔
+wisol
+-	-	-	-
+192.168.12.118
+울산피피
+upp
+-	-	-	-
+192.168.12.119
+텔레칩스
+telechips
+-	-	-	-
+192.168.12.120
+한국콜마
+kolmar
+HyperV		-	192.168.11.9
+192.168.12.121
+해양에너지
+hyenergy
+-	-	-	-
+192.168.12.122
+이지스자산운용
+igis
+-	-	-	-
+192.168.12.123
+제주항공
+jejuair
+HyperV	local-jejuair	00-15-5D-01-08-8C	192.168.11.9
+192.168.12.124
+애경케미칼
+aekyungchemical
+HyperV	local-aekyungchem	00-15-5D-01-08-92	192.168.11.9
+192.168.12.125
+에어인천
+airincheon
+HyperV	local-airincheon	00-15-5D-01-08-93	192.168.11.9
+192.168.12.126
+버킷플레이스
+bucketplace
+HyperV	local-bucketplace	00-15-5D-01-08-97	192.168.11.9
+192.168.12.127
+매일유업
+maeil
+HyperV	local-maeil	00-15-5D-01-08-99	192.168.11.9
+192.168.12.128
+서흥
+suheung
+HyperV	local-suheung	00-15-5D-0B-13-6A	192.168.11.9
+192.168.12.129
+현대코퍼레이션
+hyundaicorp
+HyperV	local-hyundaicorp	00-15-5D-0B-13-74	192.168.11.9
+192.168.12.145
+린데코리아
+linde
+-	-	-	-
+192.168.12.146
+현대제철
+hyundai-steel
+-	-	-	-
+192.168.12.151
+네오팜
+neopharm
+HyperV	local-itshanbul	00-15-5D-01-08-4E	192.168.11.9
+192.168.12.151
+잇츠한불
+itshanbul
+HyperV	local-itshanbul	00-15-5D-01-08-4E	192.168.11.9
+192.168.12.152
+버거킹
+burgerking
+HyperV	local-burgerking	00-15-5D-01-08-07	192.168.11.9
+192.168.12.153
+십일번가
+11st
+HyperV	local-11st	00-15-5D-01-08-03	192.168.11.9
+192.168.12.154
+안국약품
+ahngook
+HyperV	-	-	192.168.11.9
+192.168.12.155
+에센코어
+essencore
+HyperV	local-essencore	00-15-5D-01-08-16	192.168.11.9
+192.168.12.157
+에스케이네트웍스
+sk-networks
+노트북	김재현	AA-AA-AA-AA-AA-AA	-
+192.168.12.158
+에스케이머티리얼즈에어플러스
+sk-airplus
+HyperV	local-skmaterials	00-15-5D-00-C0-17	192.168.11.9
+192.168.12.158
+에스케이지포틴
+sk-g14
+HyperV	local-skmaterials	00-15-5D-00-C0-17	192.168.11.9
+192.168.12.158
+에스케이스페셜티
+sk-specialt
+HyperV	local-skmaterials	00-15-5D-00-C0-17	192.168.11.9
+192.168.12.158
+에스케이트리켐
+sk-trichem
+HyperV	local-skmaterials	00-15-5D-00-C0-17	192.168.11.9
+192.168.12.159
+에스케이바이오텍
+sk-biotek
+HyperV	local_sk_biotek	00-15-5D-01-08-14	192.168.11.9
+192.168.12.160
+에스케이바이오팜
+sk-biopharm
+HyperV	local-skbiopham	00-15-5D-0B-13-09	192.168.11.9
+192.168.12.161
+에스케이스퀘어
+sk-square
+HyperV	local-sksquare	00-15-5D-0B-13-21	192.168.11.9
+192.168.12.164
+에스케이주식회사
+sk-inc
+HyperV	local-sk-inc	00-15-5D-01-08-5D	192.168.11.9
+192.168.12.169
+에프앤유신용정보
+fnu
+HyperV	local-fnu	00-15-5D-00-C0-1F	192.168.11.9
+192.168.12.169
+버거킹_일본
+burgerkingjp
+HyperV	burgerkingjp	00-15-5D-0B-13-8E	192.168.11.9
+192.168.12.170
+유지피에스
+ugps
+HyperV	local-ugps	00-15-5D-0B-13-76	192.168.11.9
+192.168.12.172
+키파운드리
+keyfoundry
+HyperV	local-keyfoundry	00-15-5D-01-08-1C	192.168.11.9
+192.168.12.173
+티맵모빌리티
+tmap-mobility
+HyperV	local-sk-tmap	00-15-5D-01-08-7D	192.168.11.9
+192.168.12.174
+패스트파이브
+fastfive
+HyperV	local-fastfive	00-15-5D-0B-13-23	192.168.11.9
+192.168.12.175
+푸디스트
+foodist
+HyperV	local-foodist	-	192.168.11.9
+192.168.12.176
+에이제이네트웍스
+ajnetworks
+HyperV	local-ajnetworks	00-15-5D-00-C0-37	192.168.11.9
+192.168.12.177
+에스케이네트웍스
+sk-networks
+노트북	정현주	AA-AA-AA-AA-AA-AA	-
+192.168.12.178
+에스케이플래닛
+sk-planet
+HyperV	local-skplanet	00-15-5D-00-C0-39	192.168.11.9
+192.168.12.179
+사조
+sajo
+HyperV	local-sajo	00-15-5D-00-C0-38	192.168.11.9
+192.168.12.180
+에스케이네트웍스
+sk-networks
+HyperV	local-sk_networks	00-15-5D-01-08-87	192.168.11.9
+192.168.12.180
+에스케이스토아
+sk-stoa
+HyperV	local-sk-stoa	00-15-5D-00-C0-3A	192.168.11.9
+192.168.12.181
+에스피씨
+spc
+HyperV	local-spc	00-15-5D-01-08-90	192.168.11.9
+192.168.12.182
+에스피씨
+spc
+노트북	UNIPOST	60-E9-AA-9A-5D-89	-
+192.168.12.183
+해성
+haesungds
+HyperV	local-haesungds	00-15-5D-01-08-88	192.168.11.9
+192.168.12.184
+신성이엔지
+shinsung
+HyperV	local-shinsung	00-15-5D-01-08-8D	192.168.11.9
+192.168.12.185
+에스케이시그넷
+sk-signet
+HyperV	local-sk-signet	00-15-5D-00-C0-32	192.168.11.9
+192.168.12.186
+에스엠엔터테인먼트
+sment
+HyperV	local-sment	00-15-5D-0B-13-22	192.168.11.9
+192.168.12.187
+삼양식품
+samyangfood
+HyperV	local-samyangfood	00-15-5D-00-C0-3F	192.168.11.9
+192.168.12.188
+쌍용이씨앤이
+ssangyongcne
+HyperV	local-ssangyong	00-15-5D-0B-13-7F	192.168.11.9
+192.168.12.189
+에스케이실트론
+sk-siltron
+HyperV	local-sk-siltron	00-15-5D-0B-13-8A	192.168.11.9
+192.168.12.189
+효성티앤에스
+hyosungtns
+HyperV	local-hyosung	00-15-5D-0B-13-8C	192.168.11.9
+192.168.12.190
+에스케이실트론
+sk-siltron
+HyperV	local-sk-siltron2	00-15-5D-0B-13-8B	192.168.11.9
+192.168.12.192
+비렉스테크
+berextech
+HyperV	local-berextech	00-15-5D-0B-13-94	192.168.11.9
+192.168.12.193
+비렉스테크
+berextech
+HyperV	local-berextec2	00-15-5D-0B-13-95	192.168.11.8
+192.168.12.201
+구독웹
+unipost.web
+HyperV	local-mobile	00-15-5D-0B-13-92	192.168.11.9
+192.168.12.202
+구독웹
+unipost.web
+HyperV	local-mobile2	00-15-5D-0B-13-92	192.168.11.8

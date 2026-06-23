@@ -1,0 +1,58 @@
+services:
+  db:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: clawmap
+      MYSQL_USER: clawmap
+      MYSQL_PASSWORD: clawmap
+    volumes:
+      - db_data:/var/lib/mysql
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    ports:
+      - "18087:8080"
+    environment:
+      DB_USERNAME: clawmap
+      DB_PASSWORD: clawmap
+      KAKAO_API_KEY: ${KAKAO_API_KEY}
+      NAVER_CLIENT_ID: ${NAVER_CLIENT_ID}
+      NAVER_CLIENT_SECRET: ${NAVER_CLIENT_SECRET}
+      SPRING_PROFILES_ACTIVE: seeder
+      UPLOAD_DIR: /app/uploads
+      # Google OAuth - Google Cloud Console에서 발급
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      # OAuth 콜백 URI - Google Cloud Console 등록값과 일치해야 함
+      OAUTH_REDIRECT_URI: ${OAUTH_REDIRECT_URI}
+      # JWT 서명 키 - Base64, 최소 32바이트 (openssl rand -base64 32 로 생성)
+      JWT_SECRET: ${JWT_SECRET}
+      # 로그인 후 리다이렉트할 프론트엔드 URL (랜딩페이지 분리 후 /app 으로 변경)
+      FRONTEND_URL: ${FRONTEND_URL}
+    volumes:
+      - uploads_data:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_KAKAO_MAP_KEY: ${VITE_KAKAO_MAP_KEY}
+    ports:
+      - "3007:80"
+    depends_on:
+      - backend
+
+volumes:
+  db_data:
+  uploads_data:  # 업로드 파일 영구 저장 볼륨

@@ -1,0 +1,14 @@
+services:
+  pipeline:
+    build: ./services/pipeline
+    container_name: yt-pipeline
+    volumes:
+      - ./scripts:/app/scripts
+      - ./assets:/app/assets
+      - ./credentials:/app/credentials
+      - ./volumes/output:/app/output
+      - ./services/pipeline/src:/app/src
+    env_file: .env
+    restart: unless-stopped
+    environment:
+      - PYTHONUNBUFFERED=1

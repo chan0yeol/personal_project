@@ -1,0 +1,11 @@
+services:
+  uni-data:
+    build: .
+    container_name: uni-data
+    ports:
+      - "4100:4100"
+    environment:
+      - TZ=Asia/Seoul
+    env_file:
+      - .env
+    restart: unless-stopped

@@ -1,0 +1,15 @@
+# HTTP 통신 및 API 관련
+requests
+openai
+
+# 슬랙 봇 프레임워크 (Socket Mode 지원)
+slack_sdk
+slack_bolt
+
+# 이미지 및 리포트 생성
+imgkit
+Pillow
+
+# 데이터베이스 및 환경 변수 관리
+pymysql
+python-dotenv

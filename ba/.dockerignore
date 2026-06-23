@@ -1,0 +1,8 @@
+node_modules
+data
+*.log
+snapshot.json
+.env
+*.zip
+back
+*_bak*

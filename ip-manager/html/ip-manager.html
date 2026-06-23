@@ -1,0 +1,1154 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>IP Manager</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0d1117;--bg2:#161b22;--bg3:#21262d;--bg4:#2d333b;
+  --border:#30363d;--border2:#444c56;
+  --text:#e6edf3;--text2:#8b949e;--text3:#6e7681;
+  --green:#3fb950;--green-bg:rgba(63,185,80,.12);
+  --yellow:#d29922;--yellow-bg:rgba(210,153,34,.12);
+  --red:#f85149;--red-bg:rgba(248,81,73,.12);
+  --blue:#58a6ff;--blue-bg:rgba(88,166,255,.1);
+  --purple:#bc8cff;
+  --radius:6px;
+  --mono:'IBM Plex Mono',monospace;
+  --sans:'IBM Plex Sans',sans-serif;
+}
+/* ── Light mode ── */
+body.light{
+  --bg:#f6f8fa;--bg2:#ffffff;--bg3:#f0f2f5;--bg4:#e8eaed;
+  --border:#d0d7de;--border2:#b0b7be;
+  --text:#1f2328;--text2:#656d76;--text3:#9198a1;
+  --green:#1a7f37;--green-bg:rgba(26,127,55,.1);
+  --yellow:#9a6700;--yellow-bg:rgba(154,103,0,.1);
+  --red:#cf222e;--red-bg:rgba(207,34,46,.08);
+  --blue:#0969da;--blue-bg:rgba(9,105,218,.1);
+  --purple:#8250df;
+}
+body.light .loading-overlay{background:rgba(246,248,250,.75)}
+html{font-size:14px}
+html.large{font-size:18px}
+html.large .ip-grid{grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+html.large .ip-card{padding:14px 16px}
+html.large .ip-addr{font-size:1rem}
+html.large .ip-name{font-size:.95rem}
+html.large .ip-status{font-size:.75rem;padding:3px 10px}
+html.large .stat-card{padding:16px 24px}
+html.large .stat-card .stat-val{font-size:1.8rem}
+html.large .sidebar-item{padding:10px 12px;font-size:1rem}
+html.large .btn{font-size:.88rem;padding:8px 14px}
+body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:100vh;display:flex;flex-direction:column}
+
+/* Topbar */
+.topbar{height:56px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 20px;gap:16px;position:sticky;top:0;z-index:300;flex-shrink:0}
+.logo{font-family:var(--mono);font-size:.95rem;font-weight:600;color:var(--text);display:flex;align-items:center;gap:8px}
+.logo-dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.topbar-search{flex:1;max-width:340px;margin-left:auto;display:flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:6px 12px}
+.topbar-search input{background:none;border:none;outline:none;color:var(--text);font-family:var(--mono);font-size:.82rem;width:100%;line-height:1}
+.topbar-search input::placeholder{color:var(--text3)}
+.topbar-search svg{color:var(--text3);flex-shrink:0}
+.topbar-actions{display:flex;gap:8px;margin-left:12px}
+
+/* Buttons */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:var(--radius);border:1px solid var(--border);background:var(--bg3);color:var(--text2);font-family:var(--mono);font-size:.78rem;cursor:pointer;transition:all .15s;white-space:nowrap;line-height:1}
+.btn:hover{border-color:var(--border2);color:var(--text)}
+.btn-primary{background:var(--blue);border-color:var(--blue);color:#fff}
+.btn-primary:hover{background:#4493e3;border-color:#4493e3;color:#fff}
+.btn-danger{background:var(--red-bg);border-color:var(--red);color:var(--red)}
+.btn-danger:hover{background:var(--red);color:#fff}
+
+/* Layout */
+.layout{display:flex;flex:1;overflow:hidden}
+
+/* Sidebar */
+.sidebar{width:220px;flex-shrink:0;background:var(--bg2);border-right:1px solid var(--border);overflow-y:auto;padding:12px 8px;display:flex;flex-direction:column;gap:2px}
+.sidebar-label{font-family:var(--mono);font-size:.62rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);padding:8px 8px 4px}
+.sidebar-item{display:flex;align-items:center;padding:7px 10px;border-radius:var(--radius);cursor:pointer;transition:background .12s;font-size:.82rem;gap:6px}
+.sidebar-item:hover{background:var(--bg3)}
+.sidebar-item.active{background:var(--blue-bg);color:var(--blue)}
+.sidebar-item .team-name{flex:1;font-weight:500;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.sidebar-item .badge{font-family:var(--mono);font-size:.65rem;background:var(--bg4);border:1px solid var(--border);border-radius:10px;padding:1px 6px;color:var(--text2);flex-shrink:0}
+.sidebar-item.active .badge{background:var(--blue-bg);border-color:var(--blue);color:var(--blue)}
+.sidebar-divider{height:1px;background:var(--border);margin:6px 0}
+.add-team-btn{display:flex;align-items:center;gap:6px;padding:7px 10px;border-radius:var(--radius);cursor:pointer;color:var(--text3);font-size:.82rem;transition:all .12s}
+.add-team-btn:hover{background:var(--bg3);color:var(--text2)}
+
+/* Content */
+.content{flex:1;overflow-y:auto;padding:20px}
+
+/* Summary */
+.summary-bar{display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap}
+.stat-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:12px 18px;display:flex;flex-direction:column;gap:2px;min-width:120px}
+.stat-card .stat-val{font-family:var(--mono);font-size:1.4rem;font-weight:600;color:var(--text)}
+.stat-card .stat-label{font-size:.72rem;color:var(--text2)}
+.stat-card.green .stat-val{color:var(--green)}
+.stat-card.yellow .stat-val{color:var(--yellow)}
+.stat-card.red .stat-val{color:var(--red)}
+
+/* Team header */
+.team-header{display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+.team-title{font-family:var(--mono);font-size:1.05rem;font-weight:600;color:var(--text)}
+.team-range{font-family:var(--mono);font-size:.78rem;color:var(--text3)}
+.team-bar{flex:1;height:6px;background:var(--bg3);border-radius:3px;min-width:80px;overflow:hidden}
+.team-bar-fill{height:100%;border-radius:3px;transition:width .4s ease}
+.team-use-pct{font-family:var(--mono);font-size:.75rem;color:var(--text2)}
+
+/* IP Grid */
+.ip-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;margin-bottom:24px}
+.ip-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;cursor:pointer;transition:all .15s;position:relative;overflow:hidden}
+.ip-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--border)}
+.ip-card:hover{border-color:var(--border2);background:var(--bg3)}
+.ip-card.used::before{background:var(--green)}
+.ip-card.used{border-color:rgba(63,185,80,.25)}
+.ip-card.reserved::before{background:var(--yellow)}
+.ip-card.reserved{border-color:rgba(210,153,34,.25)}
+.ip-card.free{opacity:.6}
+.ip-card.free:hover{opacity:1}
+.ip-card.off::before{background:var(--red)}
+.ip-card.off{border-color:rgba(248,81,73,.2);opacity:.75}
+.ip-card.off:hover{opacity:1;border-color:rgba(248,81,73,.4)}
+.ip-addr{font-family:var(--mono);font-size:.82rem;font-weight:600;color:var(--text);margin-bottom:5px}
+.ip-name{font-size:.8rem;color:var(--text);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ip-device{font-size:.72rem;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+.ip-meta{display:flex;align-items:center;justify-content:space-between;margin-top:6px}
+.ip-status{font-family:var(--mono);font-size:.62rem;font-weight:500;padding:2px 7px;border-radius:10px}
+.ip-status.used{background:var(--green-bg);color:var(--green)}
+.ip-status.reserved{background:var(--yellow-bg);color:var(--yellow)}
+.ip-status.free{background:var(--bg3);color:var(--text3)}
+.ip-status.off{background:var(--red-bg);color:var(--red)}
+.ip-date{font-family:var(--mono);font-size:.62rem;color:var(--text3)}
+
+/* Empty */
+.empty-ip{grid-column:1/-1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;color:var(--text3);gap:8px;font-size:.85rem}
+
+/* Modal */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:500;padding:20px;opacity:0;pointer-events:none;transition:opacity .2s}
+.overlay.open{opacity:1;pointer-events:all}
+.modal{background:var(--bg2);border:1px solid var(--border);border-radius:12px;width:100%;max-width:520px;box-shadow:0 24px 48px rgba(0,0,0,.5);transform:translateY(12px);transition:transform .2s;overflow:hidden}
+.overlay.open .modal{transform:translateY(0)}
+.modal-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border)}
+.modal-title{font-family:var(--mono);font-size:.95rem;font-weight:600;color:var(--text)}
+.modal-close{width:28px;height:28px;border-radius:var(--radius);border:none;background:var(--bg3);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:1rem;transition:all .12s}
+.modal-close:hover{background:var(--bg4);color:var(--text)}
+.modal-body{padding:20px;display:flex;flex-direction:column;gap:14px}
+.modal-footer{display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;border-top:1px solid var(--border);background:var(--bg)}
+
+/* Form */
+.form-row{display:flex;flex-direction:column;gap:5px}
+.form-row label{font-family:var(--mono);font-size:.72rem;color:var(--text2)}
+.form-row label em{color:var(--blue);font-style:normal}
+.form-input{padding:8px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--mono);font-size:.82rem;outline:none;transition:border-color .15s;width:100%}
+.form-input:focus{border-color:var(--blue)}
+.form-input::placeholder{color:var(--text3)}
+.form-row-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.form-select{padding:8px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--mono);font-size:.82rem;outline:none;appearance:none;cursor:pointer;transition:border-color .15s;width:100%}
+.form-select:focus{border-color:var(--blue)}
+
+/* Filter */
+.filter-bar{display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.filter-chip{padding:4px 12px;border-radius:20px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);font-family:var(--mono);font-size:.72rem;cursor:pointer;transition:all .12s}
+.filter-chip:hover{border-color:var(--border2);color:var(--text)}
+.filter-chip.active{background:var(--blue-bg);border-color:var(--blue);color:var(--blue)}
+
+/* Toast */
+.toast{position:fixed;bottom:24px;right:24px;z-index:999;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:10px 16px;font-family:var(--mono);font-size:.8rem;color:var(--text);display:flex;align-items:center;gap:8px;transform:translateY(20px);opacity:0;transition:all .25s;pointer-events:none}
+.toast.show{transform:translateY(0);opacity:1}
+.toast.success{border-color:var(--green);color:var(--green)}
+.toast.error{border-color:var(--red);color:var(--red)}
+
+/* Loading */
+.loading-overlay{position:fixed;inset:0;background:rgba(13,17,23,.7);display:flex;align-items:center;justify-content:center;z-index:999;opacity:0;pointer-events:none;transition:opacity .2s}
+.loading-overlay.show{opacity:1;pointer-events:all}
+.spinner{width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* No team */
+.no-team{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:300px;gap:12px;color:var(--text3)}
+.no-team h2{font-family:var(--mono);font-size:1rem;color:var(--text2)}
+
+/* IP range preview */
+.ip-range-preview{font-family:var(--mono);font-size:.72rem;color:var(--text2);background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:6px 10px;margin-top:4px}
+
+/* All view */
+.all-teams-grid{display:flex;flex-direction:column;gap:28px}
+
+/* Bulk tabs */
+.code-tab{padding:5px 12px;border-radius:5px;border:1px solid transparent;background:transparent;font-family:var(--mono);font-size:.72rem;color:var(--text3);cursor:pointer;transition:all .13s}
+.code-tab.on{background:var(--bg2);border-color:var(--border);color:var(--text2)}
+.bulk-row-ok td{color:var(--text)}
+.bulk-row-warn td{color:var(--yellow)}
+.bulk-row-err td{color:var(--red);text-decoration:line-through;opacity:.6}
+
+.hint{font-size:.64rem;color:var(--text3);font-family:var(--mono);line-height:1.5}
+
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+
+@media(max-width:640px){
+  .sidebar{display:none}
+  .ip-grid{grid-template-columns:repeat(auto-fill,minmax(160px,1fr))}
+}
+</style>
+</head>
+<body>
+
+<!-- Loading -->
+<div class="loading-overlay" id="loading"><div class="spinner"></div></div>
+
+<!-- Topbar -->
+<header class="topbar">
+  <div class="logo"><span class="logo-dot"></span>IP Manager</div>
+  <div class="topbar-search">
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.868-3.834zm-5.242 1.7a5 5 0 1 1 0-10 5 5 0 0 1 0 10z"/></svg>
+    <input type="text" id="search-input" placeholder="IP, 이름, 기기 검색..." oninput="handleSearch(this.value)"/>
+  </div>
+  <!-- 동기화 인디케이터 -->
+  <div id="sync-indicator" style="display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:.68rem;color:var(--text3);white-space:nowrap;margin-left:8px">
+    <span id="sync-dot" style="width:6px;height:6px;border-radius:50%;background:var(--text3);flex-shrink:0;transition:background .3s"></span>
+    <span id="refresh-indicator">동기화 대기중</span>
+  </div>
+  <div class="topbar-actions">
+    <button class="btn" onclick="showExport()">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/><path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708l3-3z"/></svg>
+      Export
+    </button>
+    <button class="btn" id="large-toggle-btn" onclick="toggleLarge()" title="글자 크게">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M1 1h5v2H3v2H1V1zm9 0h5v4h-2V3h-3V1zM1 10h2v2h2v2H1v-4zm12 2h-2v2h-2v2h5v-4h-1z"/><path d="M5 5h6v6H5V5z"/></svg>
+      <span id="large-label">크게</span>
+    </button>
+    <button class="btn" id="theme-toggle-btn" onclick="toggleTheme()" title="다크/라이트 모드 전환">
+      <svg id="theme-icon-dark" width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M6 .278a.768.768 0 0 1 .08.858 7.208 7.208 0 0 0-.878 3.46c0 4.021 3.278 7.277 7.318 7.277.527 0 1.04-.055 1.533-.16a.787.787 0 0 1 .81.316.733.733 0 0 1-.031.893A8.349 8.349 0 0 1 8.344 16C3.734 16 0 12.286 0 7.71 0 4.266 2.114 1.312 5.124.06A.752.752 0 0 1 6 .278z"/></svg>
+      <svg id="theme-icon-light" width="13" height="13" viewBox="0 0 16 16" fill="currentColor" style="display:none"><path d="M8 11a3 3 0 1 1 0-6 3 3 0 0 1 0 6zm0 1a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM8 0a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-1 0v-2A.5.5 0 0 1 8 0zm0 13a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-1 0v-2A.5.5 0 0 1 8 13zm8-5a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1 0-1h2a.5.5 0 0 1 .5.5zM3 8a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1 0-1h2A.5.5 0 0 1 3 8zm10.657-5.657a.5.5 0 0 1 0 .707l-1.414 1.415a.5.5 0 1 1-.707-.708l1.414-1.414a.5.5 0 0 1 .707 0zm-9.193 9.193a.5.5 0 0 1 0 .707L3.05 13.657a.5.5 0 0 1-.707-.707l1.414-1.414a.5.5 0 0 1 .707 0zm9.193 2.121a.5.5 0 0 1-.707 0l-1.414-1.414a.5.5 0 0 1 .707-.707l1.414 1.414a.5.5 0 0 1 0 .707zM4.464 4.465a.5.5 0 0 1-.707 0L2.343 3.05a.5.5 0 1 1 .707-.707l1.414 1.414a.5.5 0 0 1 0 .708z"/></svg>
+    </button>
+    <button class="btn btn-danger" onclick="openResetModal()">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/><path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/></svg>
+      초기화
+    </button>
+    <button class="btn" onclick="openBulkModal()">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M14 1a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h12zM2 0a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2H2z"/><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/></svg>
+      일괄 입력
+    </button>
+    <button class="btn btn-primary" onclick="openAddIPModal()">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/></svg>
+      IP 할당
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+  <nav class="sidebar" id="sidebar">
+    <div class="sidebar-label">팀 / 구간</div>
+    <div id="sidebar-list"></div>
+    <div class="sidebar-divider"></div>
+    <div class="add-team-btn" onclick="openTeamModal()">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/></svg>
+      팀 추가
+    </div>
+  </nav>
+  <main class="content" id="main-content"></main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- IP 할당 모달 -->
+<div class="overlay" id="ip-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="ip-modal-title">IP 할당</span>
+      <button class="modal-close" onclick="closeModal('ip-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <label><em>IP 주소</em></label>
+        <input class="form-input" id="f-ip" placeholder="192.168.12.10" readonly style="cursor:default;opacity:.7"/>
+      </div>
+      <div class="form-row-2">
+        <div class="form-row">
+          <label><em>이름</em> (담당자)</label>
+          <input class="form-input" id="f-name" placeholder="홍길동"/>
+        </div>
+        <div class="form-row">
+          <label><em>상태</em></label>
+          <select class="form-select" id="f-status">
+            <option value="used">사용중</option>
+            <option value="reserved">예약됨</option>
+            <option value="off">VM꺼짐</option>
+            <option value="free">미사용</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <label><em>기기명 / 용도</em></label>
+        <input class="form-input" id="f-device" placeholder="MacBook Pro / 개발팀 서버 ..."/>
+      </div>
+      <div class="form-row">
+        <label><em>MAC 주소</em> (선택)</label>
+        <input class="form-input" id="f-mac" placeholder="AA:BB:CC:DD:EE:FF"/>
+      </div>
+      <div class="form-row-2">
+        <div class="form-row">
+          <label><em>할당일</em></label>
+          <input class="form-input" type="date" id="f-date"/>
+        </div>
+        <div class="form-row">
+          <label><em>팀</em></label>
+          <select class="form-select" id="f-team"></select>
+        </div>
+      </div>
+      <div class="form-row">
+        <label><em>메모</em></label>
+        <input class="form-input" id="f-memo" placeholder="특이사항, VLAN, 포트번호 등..."/>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-danger" id="f-delete-btn" onclick="deleteCurrentIP()" style="margin-right:auto;display:none">삭제</button>
+      <button class="btn" onclick="closeModal('ip-modal')">취소</button>
+      <button class="btn btn-primary" onclick="saveIP()">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- 팀 모달 -->
+<div class="overlay" id="team-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="team-modal-title">팀 추가</span>
+      <button class="modal-close" onclick="closeModal('team-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <label><em>팀 이름</em></label>
+        <input class="form-input" id="t-name" placeholder="1팀, 개발팀, 손님용 ..."/>
+      </div>
+      <div class="form-row-2">
+        <div class="form-row">
+          <label><em>시작 옥텟</em></label>
+          <input class="form-input" type="number" id="t-start" placeholder="1" min="1" max="254" oninput="updateRangePreview()"/>
+        </div>
+        <div class="form-row">
+          <label><em>끝 옥텟</em></label>
+          <input class="form-input" type="number" id="t-end" placeholder="50" min="1" max="255" oninput="updateRangePreview()"/>
+        </div>
+      </div>
+      <div class="form-row">
+        <label><em>서브넷 프리픽스</em></label>
+        <input class="form-input" id="t-prefix" value="192.168.12" oninput="updateRangePreview()"/>
+      </div>
+      <div class="ip-range-preview" id="range-preview">IP 범위 미리보기</div>
+      <div class="form-row">
+        <label><em>팀 색상</em></label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap" id="color-picker"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-danger" id="t-delete-btn" onclick="deleteCurrentTeam()" style="margin-right:auto;display:none">팀 삭제</button>
+      <button class="btn" onclick="closeModal('team-modal')">취소</button>
+      <button class="btn btn-primary" onclick="saveTeam()">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- Export 모달 -->
+<div class="overlay" id="export-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Export JSON</span>
+      <button class="modal-close" onclick="closeModal('export-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <label><em>JSON 데이터</em> (복사해서 백업)</label>
+        <textarea class="form-input" id="export-area" rows="14" readonly style="resize:vertical;font-size:.72rem;line-height:1.5;opacity:.8"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="downloadJSON()">📥 파일 다운로드</button>
+      <button class="btn btn-primary" onclick="copyExport()">복사</button>
+    </div>
+  </div>
+</div>
+
+<!-- 초기화 모달 -->
+<div class="overlay" id="reset-modal">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <span class="modal-title">⚠️ 데이터 초기화</span>
+      <button class="modal-close" onclick="closeModal('reset-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:.85rem;color:var(--text2);line-height:1.7">초기화 범위를 선택하세요. <span style="color:var(--red)">되돌릴 수 없습니다.</span></p>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
+        <label style="display:flex;align-items:flex-start;gap:10px;padding:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);cursor:pointer">
+          <input type="radio" name="reset-scope" value="ips" id="reset-opt-ip" style="margin-top:2px;accent-color:var(--yellow)" checked onchange="updateResetBtn()"/>
+          <div>
+            <div style="font-size:.82rem;font-weight:600;color:var(--text)">IP 할당 정보만 초기화</div>
+            <div style="font-size:.72rem;color:var(--text3);margin-top:2px;font-family:var(--mono)">팀 구성 유지 · IP 할당 데이터만 삭제</div>
+          </div>
+        </label>
+        <label style="display:flex;align-items:flex-start;gap:10px;padding:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);cursor:pointer">
+          <input type="radio" name="reset-scope" value="all" id="reset-opt-all" style="margin-top:2px;accent-color:var(--red)" onchange="updateResetBtn()"/>
+          <div>
+            <div style="font-size:.82rem;font-weight:600;color:var(--text)">전체 초기화</div>
+            <div style="font-size:.72rem;color:var(--text3);margin-top:2px;font-family:var(--mono)">팀 구성 + IP 할당 전부 삭제</div>
+          </div>
+        </label>
+      </div>
+      <div style="margin-top:12px;padding:10px 12px;background:var(--red-bg);border:1px solid var(--red);border-radius:var(--radius);font-family:var(--mono);font-size:.72rem;color:var(--red)" id="reset-confirm-msg">IP 할당 데이터가 모두 삭제됩니다.</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('reset-modal')">취소</button>
+      <button class="btn btn-danger" id="reset-confirm-btn" onclick="executeReset()">IP 데이터 초기화</button>
+    </div>
+  </div>
+</div>
+
+<!-- 일괄 입력 모달 -->
+<div class="overlay" id="bulk-modal">
+  <div class="modal" style="max-width:620px">
+    <div class="modal-header">
+      <span class="modal-title">일괄 입력</span>
+      <button class="modal-close" onclick="closeModal('bulk-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <label><em>형식</em>: 한 줄에 <code style="color:var(--green);font-family:var(--mono);font-size:.75rem">이름[탭 또는 공백2개+]IP</code></label>
+        <textarea class="form-input" id="bulk-raw" rows="10"
+          style="resize:vertical;font-size:.78rem;line-height:1.7;font-family:var(--mono)"
+          placeholder="경창산업&#9;192.168.12.51&#10;금화정수&#9;192.168.12.52&#10;넥센타이어&#9;192.168.12.86"
+          oninput="previewBulk()"></textarea>
+      </div>
+      <div class="form-row-2">
+        <div class="form-row">
+          <label><em>기본 팀</em> (구간 자동 감지 우선)</label>
+          <select class="form-select" id="bulk-team"></select>
+        </div>
+        <div class="form-row">
+          <label><em>기본 상태</em></label>
+          <select class="form-select" id="bulk-status">
+            <option value="used">사용중</option>
+            <option value="reserved">예약됨</option>
+          </select>
+        </div>
+      </div>
+      <div id="bulk-preview" style="display:none">
+        <div style="font-family:var(--mono);font-size:.68rem;color:var(--text3);margin-bottom:6px" id="bulk-preview-count"></div>
+        <div style="max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius)">
+          <table style="width:100%;border-collapse:collapse">
+            <thead>
+              <tr style="background:var(--bg3);position:sticky;top:0">
+                <th style="padding:6px 10px;text-align:left;font-family:var(--mono);font-size:.67rem;color:var(--text3);font-weight:500;border-bottom:1px solid var(--border)">IP</th>
+                <th style="padding:6px 10px;text-align:left;font-family:var(--mono);font-size:.67rem;color:var(--text3);font-weight:500;border-bottom:1px solid var(--border)">이름</th>
+                <th style="padding:6px 10px;text-align:left;font-family:var(--mono);font-size:.67rem;color:var(--text3);font-weight:500;border-bottom:1px solid var(--border)">팀</th>
+                <th style="padding:6px 10px;text-align:left;font-family:var(--mono);font-size:.67rem;color:var(--text3);font-weight:500;border-bottom:1px solid var(--border)">비고</th>
+              </tr>
+            </thead>
+            <tbody id="bulk-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('bulk-modal')">취소</button>
+      <button class="btn btn-primary" id="bulk-apply-btn" onclick="applyBulk()" style="display:none">적용</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── API ───────────────────────────────────────────────────
+const API = 'http://192.168.12.211:4100/api/ip';
+
+async function apiGet(path) {
+  const r = await fetch(API + path);
+  if (!r.ok) throw new Error(r.statusText);
+  return r.json();
+}
+async function apiPost(path, body) {
+  const r = await fetch(API + path, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+  if (!r.ok) throw new Error(r.statusText);
+  return r.json();
+}
+async function apiPut(path, body) {
+  const r = await fetch(API + path, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+  if (!r.ok) throw new Error(r.statusText);
+  return r.json();
+}
+async function apiPatch(path, body) {
+  const r = await fetch(API + path, { method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+  if (!r.ok) throw new Error(r.statusText);
+  return r.json();
+}
+async function apiDelete(path) {
+  const r = await fetch(API + path, { method:'DELETE' });
+  if (!r.ok) throw new Error(r.statusText);
+}
+
+// ─── State ─────────────────────────────────────────────────
+// DB.ips = 배열 [{id, ip, status, name, device, mac, memo, date, team}, ...]
+let DB = { teams: [], ips: [] };
+let activeTeam   = 'all';
+let activeFilter = 'all';
+let searchQuery  = '';
+let editingIPId  = null;   // DB record id (json-server auto id)
+let editingIPAddr= null;   // ip string
+let editingTeamId= null;
+let bulkParsed   = [];
+
+const TEAM_COLORS = ['#3fb950','#58a6ff','#bc8cff','#d29922','#f85149','#e3b341','#79c0ff','#ff7b72','#7ee787','#ffa657'];
+
+// ─── Load ──────────────────────────────────────────────────
+async function loadAll() {
+  showLoading(true);
+  try {
+    const [teams, ips] = await Promise.all([apiGet('/teams'), apiGet('/ips')]);
+    DB.teams = teams;
+    DB.ips   = ips;
+    renderAll();
+  } catch(e) {
+    document.getElementById('main-content').innerHTML = `
+      <div class="no-team">
+        <svg width="40" height="40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
+        <h2>서버 연결 실패</h2>
+        <p style="font-family:var(--mono);font-size:.75rem;color:var(--red)">DB에 접속할 수 없습니다</p>
+        <button class="btn btn-primary" onclick="loadAll()" style="margin-top:8px">다시 시도</button>
+      </div>`;
+  } finally {
+    showLoading(false);
+  }
+}
+
+function showLoading(on) {
+  document.getElementById('loading').classList.toggle('show', on);
+}
+
+// ─── Render ────────────────────────────────────────────────
+function renderAll() {
+  renderSidebar();
+  renderContent();
+}
+
+function ipsByTeam(teamId) {
+  return DB.ips.filter(x => x.team === teamId);
+}
+
+function ipByAddr(addr) {
+  return DB.ips.find(x => x.ip === addr) || null;
+}
+
+function renderSidebar() {
+  const el = document.getElementById('sidebar-list');
+  const totalAssigned = DB.ips.filter(x => x.status !== 'free').length;
+
+  let html = `
+    <div class="sidebar-item ${activeTeam==='all'?'active':''}" onclick="setActiveTeam('all')">
+      <span style="width:7px;height:7px;border-radius:50%;background:var(--text3);flex-shrink:0"></span>
+      <span class="team-name">전체 보기</span>
+      <span class="badge">${totalAssigned}</span>
+    </div>`;
+
+  DB.teams.forEach(t => {
+    const used  = DB.ips.filter(x => String(x.team) === String(t.id) && x.status !== 'free').length;
+    const total = t.end - t.start + 1;
+    html += `
+      <div class="sidebar-item \${activeTeam===String(t.id)?'active':''}" onclick="setActiveTeam('${t.id}')">
+        <span style="width:7px;height:7px;border-radius:50%;background:${t.color};flex-shrink:0"></span>
+        <span class="team-name">${esc(t.name)}</span>
+        <span class="badge">${used}/${total}</span>
+        <span onclick="event.stopPropagation();openTeamModal('${t.id}')" style="color:var(--text3);font-size:.7rem;padding:2px 4px;border-radius:4px;cursor:pointer" title="편집">✎</span>
+      </div>`;
+  });
+
+  el.innerHTML = html;
+}
+
+function renderContent() {
+  const el = document.getElementById('main-content');
+  if (!DB.teams.length) {
+    el.innerHTML = `<div class="no-team"><h2>팀을 먼저 추가하세요</h2><button class="btn btn-primary" onclick="openTeamModal()" style="margin-top:8px">+ 팀 추가</button></div>`;
+    return;
+  }
+
+  const totalSlots  = DB.teams.reduce((a,t) => a + (t.end - t.start + 1), 0);
+  const usedCount   = DB.ips.filter(x => x.status === 'used').length;
+  const reservedCount = DB.ips.filter(x => x.status === 'reserved').length;
+  const offCount    = DB.ips.filter(x => x.status === 'off').length;
+  const freeCount   = totalSlots - usedCount - reservedCount - offCount;
+
+  let html = `
+    <div class="summary-bar">
+      <div class="stat-card"><span class="stat-val">${totalSlots}</span><span class="stat-label">전체 슬롯</span></div>
+      <div class="stat-card green"><span class="stat-val">${usedCount}</span><span class="stat-label">사용중</span></div>
+      <div class="stat-card yellow"><span class="stat-val">${reservedCount}</span><span class="stat-label">예약됨</span></div>
+      <div class="stat-card red"><span class="stat-val">${offCount}</span><span class="stat-label">VM꺼짐</span></div>
+      <div class="stat-card"><span class="stat-val" style="color:var(--text3)">${freeCount}</span><span class="stat-label">미사용</span></div>
+    </div>
+    <div class="filter-bar">
+      <span style="font-family:var(--mono);font-size:.72rem;color:var(--text3)">필터:</span>
+      <div class="filter-chip ${activeFilter==='all'?'active':''}" onclick="setFilter('all')">전체</div>
+      <div class="filter-chip ${activeFilter==='used'?'active':''}" onclick="setFilter('used')">사용중</div>
+      <div class="filter-chip ${activeFilter==='reserved'?'active':''}" onclick="setFilter('reserved')">예약됨</div>
+      <div class="filter-chip ${activeFilter==='off'?'active':''}" onclick="setFilter('off')">VM꺼짐</div>
+      <div class="filter-chip ${activeFilter==='free'?'active':''}" onclick="setFilter('free')">미사용</div>
+    </div>`;
+
+  const teamsToShow = activeTeam === 'all' ? DB.teams : DB.teams.filter(t => String(t.id) === activeTeam);
+  if (activeTeam === 'all') html += `<div class="all-teams-grid">`;
+
+  teamsToShow.forEach(t => {
+    const slots    = buildSlots(t);
+    const filtered = filterSlots(slots);
+    if (!filtered.length && (searchQuery || activeFilter !== 'all')) return;
+
+    const usedInTeam  = slots.filter(s => s.status === 'used').length;
+    const totalInTeam = slots.length;
+    const pct = totalInTeam ? Math.round(usedInTeam / totalInTeam * 100) : 0;
+
+    html += `
+      <div class="all-team-section">
+        <div class="team-header">
+          <span style="width:10px;height:10px;border-radius:50%;background:${t.color};flex-shrink:0"></span>
+          <span class="team-title">${esc(t.name)}</span>
+          <span class="team-range">${t.prefix}.${t.start} – ${t.prefix}.${t.end}</span>
+          <div class="team-bar"><div class="team-bar-fill" style="width:${pct}%;background:${t.color}"></div></div>
+          <span class="team-use-pct">${usedInTeam}/${totalInTeam}</span>
+        </div>
+        <div class="ip-grid">`;
+
+    if (!filtered.length) {
+      html += `<div class="empty-ip">해당 조건의 IP가 없습니다</div>`;
+    } else {
+      filtered.forEach(s => {
+        html += `
+          <div class="ip-card ${s.status}" onclick="openIPModal('${s.ip}','${t.id}')">
+            <div class="ip-addr">${s.ip}${s.status==='off'?' <span style="font-size:.65rem;color:var(--red);font-family:var(--mono)">[off]</span>':''}</div>
+            ${s.info.name   ? `<div class="ip-name">${esc(s.info.name)}</div>` : ''}
+            ${s.info.device ? `<div class="ip-device">${esc(s.info.device)}</div>` : ''}
+            <div class="ip-meta">
+              <span class="ip-status ${s.status}">${s.status==='used'?'사용중':s.status==='reserved'?'예약됨':s.status==='off'?'VM꺼짐':'미사용'}</span>
+              ${s.info.date ? `<span class="ip-date">${s.info.date}</span>` : ''}
+            </div>
+          </div>`;
+      });
+    }
+    html += `</div></div>`;
+  });
+
+  if (activeTeam === 'all') html += `</div>`;
+  el.innerHTML = html;
+}
+
+function buildSlots(team) {
+  const slots = [];
+  for (let i = team.start; i <= team.end; i++) {
+    const addr = `${team.prefix}.${i}`;
+    const info = ipByAddr(addr);
+    slots.push({ ip: addr, status: info?.status || 'free', info: info || {} });
+  }
+  return slots;
+}
+
+function filterSlots(slots) {
+  return slots.filter(s => {
+    if (activeFilter !== 'all' && s.status !== activeFilter) return false;
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      return s.ip.includes(q)
+        || (s.info.name   && s.info.name.toLowerCase().includes(q))
+        || (s.info.device && s.info.device.toLowerCase().includes(q))
+        || (s.info.mac    && s.info.mac.toLowerCase().includes(q))
+        || (s.info.memo   && s.info.memo.toLowerCase().includes(q));
+    }
+    return true;
+  });
+}
+
+function setActiveTeam(id) { activeTeam = String(id); renderAll(); }
+function setFilter(f)      { activeFilter = f; renderContent(); }
+function handleSearch(q)   { searchQuery = q.trim(); renderContent(); }
+
+// ─── IP Modal ──────────────────────────────────────────────
+function openIPModal(addr, teamId) {
+  editingIPAddr = addr;
+  const info = ipByAddr(addr) || {};
+  editingIPId = info.id || null;
+
+  document.getElementById('ip-modal-title').textContent = addr + ' 정보';
+  document.getElementById('f-ip').value     = addr;
+  document.getElementById('f-name').value   = info.name   || '';
+  document.getElementById('f-device').value = info.device || '';
+  document.getElementById('f-mac').value    = info.mac    || '';
+  document.getElementById('f-memo').value   = info.memo   || '';
+  document.getElementById('f-date').value   = info.date   || today();
+  document.getElementById('f-status').value = info.status || 'used';
+
+  const tSel = document.getElementById('f-team');
+  tSel.innerHTML = DB.teams.map(t =>
+    `<option value="${t.id}" ${(info.team || teamId) === t.id ? 'selected' : ''}>${esc(t.name)}</option>`
+  ).join('');
+
+  document.getElementById('f-delete-btn').style.display = editingIPId ? 'inline-flex' : 'none';
+  openModal('ip-modal');
+  setTimeout(() => document.getElementById('f-name').focus(), 220);
+}
+
+function openAddIPModal() {
+  // 첫 번째 빈 슬롯 찾기
+  let freeAddr = null, freeTeamId = null;
+  for (const t of DB.teams) {
+    for (let i = t.start; i <= t.end; i++) {
+      const addr = `${t.prefix}.${i}`;
+      if (!ipByAddr(addr)) { freeAddr = addr; freeTeamId = t.id; break; }
+    }
+    if (freeAddr) break;
+  }
+  openIPModal(freeAddr || '192.168.12.1', freeTeamId || DB.teams[0]?.id);
+  const fip = document.getElementById('f-ip');
+  fip.removeAttribute('readonly');
+  fip.style.cssText = '';
+}
+
+async function saveIP() {
+  const addr   = document.getElementById('f-ip').value.trim();
+  const status = document.getElementById('f-status').value;
+  if (!addr) { toast('IP 주소를 입력하세요', 'error'); return; }
+
+  showLoading(true);
+  try {
+    if (status === 'free') {
+      // 미사용으로 바꾸는 경우 → 레코드 삭제
+      if (editingIPId) await apiDelete(`/ips/${editingIPId}`);
+    } else {
+      const body = {
+        ip:     addr,
+        status,
+        name:   document.getElementById('f-name').value.trim(),
+        device: document.getElementById('f-device').value.trim(),
+        mac:    document.getElementById('f-mac').value.trim(),
+        memo:   document.getElementById('f-memo').value.trim(),
+        date:   document.getElementById('f-date').value,
+        team:   document.getElementById('f-team').value,
+      };
+      if (editingIPId) {
+        await apiPut(`/ips/${editingIPId}`, { ...body, id: editingIPId });
+      } else {
+        await apiPost('/ips', body);
+      }
+    }
+    await loadAll();
+    closeModal('ip-modal');
+    toast('저장되었습니다', 'success');
+  } catch(e) {
+    toast('저장 실패: ' + e.message, 'error');
+  } finally {
+    showLoading(false);
+  }
+}
+
+async function deleteCurrentIP() {
+  if (!editingIPId) return;
+  showLoading(true);
+  try {
+    await apiDelete(`/ips/${editingIPId}`);
+    await loadAll();
+    closeModal('ip-modal');
+    toast('삭제되었습니다');
+  } catch(e) {
+    toast('삭제 실패: ' + e.message, 'error');
+  } finally {
+    showLoading(false);
+  }
+}
+
+// ─── Team Modal ────────────────────────────────────────────
+function openTeamModal(id) {
+  editingTeamId = id || null;
+  const t = id ? DB.teams.find(x => x.id === id) : null;
+
+  document.getElementById('team-modal-title').textContent = t ? '팀 편집' : '팀 추가';
+  document.getElementById('t-name').value   = t?.name   || '';
+  document.getElementById('t-start').value  = t?.start  || '';
+  document.getElementById('t-end').value    = t?.end    || '';
+  document.getElementById('t-prefix').value = t?.prefix || '192.168.12';
+
+  const cp = document.getElementById('color-picker');
+  const selectedColor = t?.color || TEAM_COLORS[0];
+  cp.innerHTML = TEAM_COLORS.map(c => `
+    <div onclick="selectColor('${c}')" style="width:22px;height:22px;border-radius:50%;background:${c};cursor:pointer;border:2px solid ${selectedColor===c?'#fff':'transparent'};transition:transform .1s" id="cp-${c.replace('#','')}"></div>
+  `).join('');
+
+  document.getElementById('t-delete-btn').style.display = t ? 'inline-flex' : 'none';
+  updateRangePreview();
+  openModal('team-modal');
+  setTimeout(() => document.getElementById('t-name').focus(), 220);
+}
+
+function selectColor(c) {
+  TEAM_COLORS.forEach(x => {
+    const el = document.getElementById('cp-' + x.replace('#', ''));
+    if (el) el.style.borderColor = x === c ? '#fff' : 'transparent';
+  });
+}
+
+function getSelectedColor() {
+  for (const c of TEAM_COLORS) {
+    const el = document.getElementById('cp-' + c.replace('#', ''));
+    if (el && el.style.borderColor === 'rgb(255, 255, 255)') return c;
+  }
+  return TEAM_COLORS[0];
+}
+
+function updateRangePreview() {
+  const p = document.getElementById('t-prefix').value || '192.168.12';
+  const s = document.getElementById('t-start').value;
+  const e = document.getElementById('t-end').value;
+  const el = document.getElementById('range-preview');
+  if (s && e) {
+    const cnt = Math.max(0, parseInt(e) - parseInt(s) + 1);
+    el.textContent = `${p}.${s} ~ ${p}.${e}  (${cnt}개 슬롯)`;
+  } else {
+    el.textContent = 'IP 범위 미리보기';
+  }
+}
+
+async function saveTeam() {
+  const name   = document.getElementById('t-name').value.trim();
+  const start  = parseInt(document.getElementById('t-start').value);
+  const end    = parseInt(document.getElementById('t-end').value);
+  const prefix = document.getElementById('t-prefix').value.trim();
+  const color  = getSelectedColor();
+
+  if (!name)  { toast('팀 이름을 입력하세요', 'error'); return; }
+  if (!prefix){ toast('프리픽스를 입력하세요', 'error'); return; }
+  if (isNaN(start) || isNaN(end) || start < 1 || end > 255 || start > end) {
+    toast('IP 범위가 올바르지 않습니다', 'error'); return;
+  }
+
+  showLoading(true);
+  try {
+    if (editingTeamId) {
+      await apiPut(`/teams/${editingTeamId}`, { id: editingTeamId, name, start, end, prefix, color });
+    } else {
+      await apiPost('/teams', { name, start, end, prefix, color });
+    }
+    await loadAll();
+    closeModal('team-modal');
+    toast(editingTeamId ? '팀이 수정되었습니다' : '팀이 추가되었습니다', 'success');
+  } catch(e) {
+    toast('저장 실패: ' + e.message, 'error');
+  } finally {
+    showLoading(false);
+  }
+}
+
+async function deleteCurrentTeam() {
+  if (!editingTeamId) return;
+  if (!confirm('팀을 삭제하면 해당 구간의 IP 할당 정보도 모두 삭제됩니다. 계속하시겠습니까?')) return;
+  showLoading(true);
+  try {
+    const t = DB.teams.find(x => x.id === editingTeamId);
+    if (t) {
+      // 해당 팀 IP 레코드 일괄 삭제
+      const teamIPs = DB.ips.filter(x => x.team === editingTeamId);
+      await Promise.all(teamIPs.map(x => apiDelete(`/ips/${x.id}`)));
+    }
+    await apiDelete(`/teams/${editingTeamId}`);
+    if (activeTeam === editingTeamId) activeTeam = 'all';
+    await loadAll();
+    closeModal('team-modal');
+    toast('팀이 삭제되었습니다');
+  } catch(e) {
+    toast('삭제 실패: ' + e.message, 'error');
+  } finally {
+    showLoading(false);
+  }
+}
+
+// ─── Bulk Import ───────────────────────────────────────────
+function openBulkModal() {
+  bulkParsed = [];
+  document.getElementById('bulk-team').innerHTML = DB.teams.map(t =>
+    `<option value="${t.id}">${esc(t.name)} (${t.prefix}.${t.start}~${t.end})</option>`
+  ).join('');
+  document.getElementById('bulk-raw').value = '';
+  document.getElementById('bulk-preview').style.display = 'none';
+  document.getElementById('bulk-apply-btn').style.display = 'none';
+  openModal('bulk-modal');
+  setTimeout(() => document.getElementById('bulk-raw').focus(), 220);
+}
+
+function parseBulkText(raw) {
+  const results = [];
+  for (const line of raw.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    let name = '', ip = '';
+    const tabIdx = trimmed.indexOf('\t');
+    if (tabIdx !== -1) {
+      name = trimmed.slice(0, tabIdx).trim();
+      ip   = trimmed.slice(tabIdx + 1).trim();
+    } else {
+      const m = trimmed.match(/^(.+?)\s{2,}(\S+)$/);
+      if (m) { name = m[1].trim(); ip = m[2].trim(); }
+      else {
+        const parts = trimmed.split(/\s+/);
+        ip   = parts[parts.length - 1];
+        name = parts.slice(0, -1).join(' ');
+      }
+    }
+    const valid = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(ip) && ip.split('.').every(n => +n >= 0 && +n <= 255);
+    const existing = valid ? ipByAddr(ip) : null;
+    const dup = !!existing;
+
+    let teamId = document.getElementById('bulk-team')?.value || DB.teams[0]?.id;
+    if (valid) {
+      for (const t of DB.teams) {
+        const last = parseInt(ip.split('.')[3]);
+        const pre  = ip.split('.').slice(0, 3).join('.');
+        if (pre === t.prefix && last >= t.start && last <= t.end) { teamId = t.id; break; }
+      }
+    }
+    results.push({ name, ip, valid, dup, existingId: existing?.id || null, teamId, raw: trimmed });
+  }
+  return results;
+}
+
+function previewBulk() {
+  const raw = document.getElementById('bulk-raw').value;
+  if (!raw.trim()) {
+    document.getElementById('bulk-preview').style.display = 'none';
+    document.getElementById('bulk-apply-btn').style.display = 'none';
+    return;
+  }
+  bulkParsed = parseBulkText(raw);
+  const tbody = document.getElementById('bulk-tbody');
+  tbody.innerHTML = bulkParsed.map(r => {
+    const teamName = DB.teams.find(t => t.id === r.teamId)?.name || '?';
+    const cls  = !r.valid ? 'bulk-row-err' : r.dup ? 'bulk-row-warn' : 'bulk-row-ok';
+    const note = !r.valid ? '❌ IP 형식 오류' : r.dup ? `⚠️ 덮어씀 (기존: ${ipByAddr(r.ip)?.name || ''})` : '✓';
+    return `<tr class="${cls}">
+      <td style="padding:5px 10px;font-family:var(--mono);font-size:.75rem;border-bottom:1px solid var(--border)">${esc(r.ip)}</td>
+      <td style="padding:5px 10px;font-size:.8rem;border-bottom:1px solid var(--border)">${esc(r.name)}</td>
+      <td style="padding:5px 10px;font-family:var(--mono);font-size:.72rem;border-bottom:1px solid var(--border)">${esc(teamName)}</td>
+      <td style="padding:5px 10px;font-family:var(--mono);font-size:.7rem;border-bottom:1px solid var(--border)">${note}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('bulk-preview').style.display = 'block';
+  const valid = bulkParsed.filter(r => r.valid).length;
+  const errs  = bulkParsed.filter(r => !r.valid).length;
+  const dups  = bulkParsed.filter(r => r.valid && r.dup).length;
+  document.getElementById('bulk-preview-count').textContent =
+    `총 ${bulkParsed.length}줄 — 적용 가능: ${valid}개${dups ? ` (덮어씀 ${dups}개)` : ''}${errs ? ` / 오류 ${errs}개 (건너뜀)` : ''}`;
+  document.getElementById('bulk-apply-btn').style.display = valid > 0 ? 'inline-flex' : 'none';
+}
+
+async function applyBulk() {
+  if (!bulkParsed.length) return;
+  const status   = document.getElementById('bulk-status').value;
+  const todayStr = today();
+  const validRows = bulkParsed.filter(r => r.valid);
+  if (!validRows.length) return;
+
+  showLoading(true);
+  try {
+    await Promise.all(validRows.map(r => {
+      const body = { ip: r.ip, status, name: r.name, device: '', mac: '', memo: '', date: todayStr, team: r.teamId };
+      if (r.dup && r.existingId) {
+        return apiPut(`/ips/${r.existingId}`, { ...body, id: r.existingId });
+      } else {
+        return apiPost('/ips', body);
+      }
+    }));
+    await loadAll();
+    bulkParsed = [];
+    document.getElementById('bulk-modal').classList.remove('open');
+    toast(`${validRows.length}개 IP 적용 완료`, 'success');
+  } catch(e) {
+    toast('일괄 저장 실패: ' + e.message, 'error');
+  } finally {
+    showLoading(false);
+  }
+}
+
+// ─── Export ────────────────────────────────────────────────
+function showExport() {
+  const data = { teams: DB.teams, ips: DB.ips };
+  document.getElementById('export-area').value = JSON.stringify(data, null, 2);
+  openModal('export-modal');
+}
+
+function copyExport() {
+  navigator.clipboard.writeText(document.getElementById('export-area').value)
+    .then(() => toast('클립보드에 복사되었습니다', 'success'));
+}
+
+function downloadJSON() {
+  const blob = new Blob([document.getElementById('export-area').value], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'ip-manager-backup.json';
+  a.click();
+}
+
+// ─── Reset ─────────────────────────────────────────────────
+function openResetModal() {
+  document.getElementById('reset-opt-ip').checked = true;
+  updateResetBtn();
+  openModal('reset-modal');
+}
+
+function updateResetBtn() {
+  const scope = document.querySelector('input[name="reset-scope"]:checked')?.value || 'ips';
+  const btn = document.getElementById('reset-confirm-btn');
+  const msg = document.getElementById('reset-confirm-msg');
+  if (scope === 'all') {
+    btn.textContent = '전체 초기화';
+    msg.textContent = '팀 구성과 IP 데이터가 모두 삭제됩니다.';
+  } else {
+    btn.textContent = 'IP 데이터 초기화';
+    msg.textContent = 'IP 할당 데이터가 모두 삭제됩니다. 팀 구성은 유지됩니다.';
+  }
+}
+
+async function executeReset() {
+  const scope = document.querySelector('input[name="reset-scope"]:checked')?.value || 'ips';
+  showLoading(true);
+  try {
+    // IP 전체 삭제
+    await Promise.all(DB.ips.map(x => apiDelete(`/ips/${x.id}`)));
+    if (scope === 'all') {
+      await Promise.all(DB.teams.map(x => apiDelete(`/teams/${x.id}`)));
+    }
+    activeTeam = 'all'; activeFilter = 'all'; searchQuery = '';
+    document.getElementById('search-input').value = '';
+    await loadAll();
+    document.getElementById('reset-modal').classList.remove('open');
+    toast(scope === 'all' ? '전체 초기화 완료' : 'IP 데이터 초기화 완료', 'success');
+  } catch(e) {
+    toast('초기화 실패: ' + e.message, 'error');
+  } finally {
+    showLoading(false);
+  }
+}
+
+// ─── Modal helpers ─────────────────────────────────────────
+function openModal(id)  { document.getElementById(id).classList.add('open'); }
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+  if (id === 'ip-modal') {
+    editingIPId = null; editingIPAddr = null;
+    const fip = document.getElementById('f-ip');
+    if (fip) { fip.setAttribute('readonly', ''); fip.style.cssText = 'cursor:default;opacity:.7'; }
+  }
+}
+
+document.querySelectorAll('.overlay').forEach(el => {
+  el.addEventListener('click', e => { if (e.target === el) closeModal(el.id); });
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') document.querySelectorAll('.overlay.open').forEach(el => closeModal(el.id));
+});
+
+// ─── Toast ─────────────────────────────────────────────────
+let toastTimer;
+function toast(msg, type = '') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast show' + (type ? ' ' + type : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2400);
+}
+
+// ─── Util ──────────────────────────────────────────────────
+function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function today() { return new Date().toISOString().slice(0, 10); }
+
+// ─── Theme ─────────────────────────────────────────────────
+function toggleTheme() {
+  const isLight = document.body.classList.toggle('light');
+  localStorage.setItem('ip_manager_theme', isLight ? 'light' : 'dark');
+  document.getElementById('theme-icon-dark').style.display  = isLight ? 'none'  : '';
+  document.getElementById('theme-icon-light').style.display = isLight ? '' : 'none';
+}
+
+function toggleLarge() {
+  const isLarge = document.documentElement.classList.toggle('large');
+  localStorage.setItem('ip_manager_large', isLarge ? '1' : '');
+  document.getElementById('large-label').textContent = isLarge ? '작게' : '크게';
+}
+
+function applyLarge() {
+  if (localStorage.getItem('ip_manager_large')) {
+    document.documentElement.classList.add('large');
+    document.getElementById('large-label').textContent = '작게';
+  }
+}
+
+function applyTheme() {
+  const saved = localStorage.getItem('ip_manager_theme');
+  if (saved === 'light') {
+    document.body.classList.add('light');
+    document.getElementById('theme-icon-dark').style.display  = 'none';
+    document.getElementById('theme-icon-light').style.display = '';
+  }
+}
+
+// ─── Auto Refresh ──────────────────────────────────────────
+let autoRefreshTimer = null;
+const REFRESH_INTERVAL = 60 * 1000;
+
+async function silentRefreshIPs() {
+  // 모달 열려있으면 스킵
+  if (document.querySelector('.overlay.open')) return;
+
+  const dot = document.getElementById('sync-dot');
+  if (dot) { dot.style.background = 'var(--yellow)'; }
+
+  try {
+    const ips = await apiGet('/ips');
+    DB.ips = ips;
+    renderAll();
+    if (dot) { dot.style.background = 'var(--green)'; }
+    updateRefreshIndicator(true);
+  } catch(e) {
+    if (dot) { dot.style.background = 'var(--red)'; }
+    updateRefreshIndicator(false);
+  }
+}
+
+function updateRefreshIndicator(success) {
+  const el = document.getElementById('refresh-indicator');
+  if (!el) return;
+  const now = new Date();
+  const time = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`;
+  if (success === undefined) {
+    el.textContent = `동기화됨 ${time}`;
+  } else {
+    el.textContent = success ? `동기화됨 ${time}` : `동기화 실패 ${time}`;
+  }
+}
+
+function startAutoRefresh() {
+  clearInterval(autoRefreshTimer);
+  autoRefreshTimer = setInterval(silentRefreshIPs, REFRESH_INTERVAL);
+}
+
+// ─── Init ──────────────────────────────────────────────────
+applyTheme();
+applyLarge();
+loadAll().then(() => {
+  startAutoRefresh();
+  updateRefreshIndicator();
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,52 @@
+spring:
+  application:
+    name: trend-platform
+
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:trenddb}
+    username: ${DB_USER:trend}
+    password: ${DB_PASSWORD:trend1234}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+    show-sql: false
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 3000ms
+
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+    time-zone: Asia/Seoul
+
+server:
+  port: 8080
+
+# External services
+scraper:
+  base-url: ${SCRAPER_URL:http://localhost:8000}
+
+naver:
+  client-id: ${NAVER_CLIENT_ID:}
+  client-secret: ${NAVER_CLIENT_SECRET:}
+  datalab-url: https://openapi.naver.com/v1/datalab/search
+
+# Cache TTL (seconds)
+cache:
+  trend-ttl: 3600    # 1시간
+  rank-ttl: 1800     # 30분
+
+logging:
+  level:
+    com.trend: DEBUG
+    org.springframework.web.reactive: INFO

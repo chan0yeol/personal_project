@@ -1,0 +1,15 @@
+services:
+  ba-bot:
+    build: .
+    container_name: ba-bot
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    environment:
+      - SNAPSHOT_PATH=/app/data/snapshot.json
+      - LOG_PATH=/app/data/server.log
+      - TZ=Asia/Seoul

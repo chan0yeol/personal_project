@@ -1,0 +1,7 @@
+services:
+  dashboard-front:
+    image: dashboard-front
+    container_name: dashboard-front
+    ports:
+      - "23000:80"
+    restart: unless-stopped

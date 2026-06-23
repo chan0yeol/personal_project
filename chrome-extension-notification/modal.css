@@ -1,0 +1,140 @@
+/* 반영일정 등록 버튼 */
+#dna-btn {
+  margin-left: 8px;
+  padding: 4px 12px;
+  background: #5865f2;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  vertical-align: middle;
+  white-space: nowrap;
+  line-height: 1.5;
+  transition: background 0.15s;
+}
+#dna-btn:hover {
+  background: #3d4bc4;
+}
+
+/* 모달 오버레이 */
+#dna-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 999999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 모달 카드 */
+#dna-modal {
+  background: #fff;
+  border-radius: 12px;
+  padding: 28px 32px;
+  width: 420px;
+  max-width: 95vw;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  font-family: 'Pretendard', 'Segoe UI', system-ui, sans-serif;
+}
+
+#dna-modal h2 {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0 0 20px;
+}
+
+/* 폼 필드 */
+.dna-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 14px;
+}
+
+.dna-field label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.dna-field input,
+.dna-field select {
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  font-size: 14px;
+  color: #1e293b;
+  background: #f8fafc;
+  transition: border-color 0.15s;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.dna-field input:focus,
+.dna-field select:focus {
+  outline: none;
+  border-color: #5865f2;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(88, 101, 242, 0.1);
+}
+
+/* 버튼 영역 */
+#dna-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 20px;
+}
+
+#dna-submit {
+  padding: 8px 20px;
+  background: #5865f2;
+  color: #fff;
+  border: none;
+  border-radius: 7px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+#dna-submit:hover { background: #3d4bc4; }
+#dna-submit:disabled { background: #94a3b8; cursor: not-allowed; }
+
+#dna-cancel {
+  padding: 8px 16px;
+  background: #f1f5f9;
+  color: #64748b;
+  border: 1px solid #e2e8f0;
+  border-radius: 7px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+#dna-cancel:hover { background: #e2e8f0; }
+
+/* 결과 메시지 */
+#dna-msg {
+  font-size: 13px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  margin-top: 10px;
+  display: none;
+}
+#dna-msg.success {
+  display: block;
+  background: #dcfce7;
+  color: #15803d;
+  border: 1px solid #86efac;
+}
+#dna-msg.error {
+  display: block;
+  background: #fee2e2;
+  color: #dc2626;
+  border: 1px solid #fca5a5;
+}

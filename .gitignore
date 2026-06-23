@@ -1,0 +1,72 @@
+# Env / secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*credentials*.json
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+dist/
+build/
+.next/
+.nuxt/
+out/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Docker
+docker-compose.override.yml
+*.volumes/
+
+# Logs
+*.log
+logs/
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Archives (project backups/exports, not source)
+*.zip
+*.7z
+*.tar
+*.tar.gz
+
+# Misc
+*.tmp
+.cache/
+
+# Nested repos managed separately (own remote: chan0yeol/obsidian)
+quartz/content/
+silverbullet/space/
+
+# Files with hardcoded secrets (GCP key / Slack webhook / Slack bot token)
+trend/scraper/service_account.json
+00.slackbot/slackbot/data/teams.json
+00.slackbot/slackbot/data/settings.json
+slack/teams.json
+slack/settings.json
+slack/new-deploy/data/teams.json
+slack/new-deploy/data/settings.json
+ba/back/gw-bot.js
+ba/back/server.js
+ba/back/vacation-bot.js
+ba/gw-bot.js
+ba/server_bak.js
+ba/vacation-bot.js
+blog-project/.env_example

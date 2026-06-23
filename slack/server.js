@@ -1,0 +1,1519 @@
+require("dotenv").config();
+const fs = require("fs");
+const path = require("path");
+const axios = require("axios");
+const cron = require("node-cron");
+const express = require("express");
+
+const app = express();
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
+
+// ========== 설정 ==========
+let teamsData = JSON.parse(process.env.teamsData || "[]");
+const LOGIN_ID = process.env.LOGIN_ID;
+const LOGIN_PW = process.env.LOGIN_PW;
+const PORT = process.env.PORT || 3000;
+let SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN || "";
+
+const PORTAL_BASE = "https://unipost.co.kr";
+const UNICLOUD_BASE = "https://leave.unipost.co.kr";
+const SESSION_KEEP_URL = `${UNICLOUD_BASE}/unicloud/view/avs-use-month-report`;
+const TARGET_URL = `${UNICLOUD_BASE}/unicloud/avs/report/getMonthReportAvsUse`;
+const ITEM_IDS = [
+  "2673DED180C14058A5492AD0C6593D45", "01A614219FAE435E991B16B84956D5E4",
+  "5F451BD3A3A042C889FDCD8334FE5826", "CC63430C4EB746E8BCF2629483F6C646",
+  "B4D79AED292B8991E050E7DE961F6DAB", "B4D79AED292D8991E050E7DE961F6DAB",
+  "2A65F1A08644427EB79313D8DED9F5DA",
+];
+
+const GW_BASE = "https://gw.unipost.co.kr";
+const GW_SESSION_URL = `${GW_BASE}/unicloud/view/gw-equip-reservation`;
+const GW_TARGET_URL = `${GW_BASE}/unicloud/gw/equipReservation/getFolderReservation`;
+const EQUIP_LIST = [ { seq: "7", name: "중회의실(에땅)" }, { seq: "8", name: "대회의실(에땅)" } ];
+
+const COMMUTE_URL = `${UNICLOUD_BASE}/unicloud/avs/commute/status/getCommuteMonthDetail`;
+
+const DATA_DIR = process.env.DATA_DIR || __dirname;
+const SNAPSHOT_PATH = path.join(DATA_DIR, "snapshot.json");
+const MEMBERS_PATH = path.join(DATA_DIR, "members.json");
+const TEAMS_PATH = path.join(DATA_DIR, "teams.json");
+const SETTINGS_PATH = path.join(DATA_DIR, "settings.json");
+const LOG_PATH = path.join(DATA_DIR, "server.log");
+// ==========================
+
+let avsCookie = "";
+let gwCookie = "";
+let membersData = []; // [{ deptId, teamName, name, slackId }]
+const cronTasks = {};
+const DEFAULT_CRON_SETTINGS = [
+  { id: "sync",            label: "10분 동기화",        schedule: "*/10 * * * *", enabled: true, noTimezone: true },
+  { id: "vacationWeekly",  label: "이번주 휴가 (월)",    schedule: "0 9 * * 1",   enabled: true },
+  { id: "vacationDaily",   label: "오늘 휴가 (화-금)",   schedule: "0 9 * * 2-5", enabled: true },
+  { id: "roomDaily",       label: "오늘 회의실",          schedule: "0 9 * * 1-5", enabled: true },
+  { id: "commute",         label: "출근 알림",            schedule: "0 9 * * 1-5", enabled: true },
+  { id: "sessionKeep",     label: "세션 유지 (30분)",     schedule: "*/30 * * * *", enabled: true, noTimezone: true },
+  { id: "logReset",        label: "로그 초기화 (월)",     schedule: "0 0 * * 1",   enabled: true },
+];
+let cronSettings = DEFAULT_CRON_SETTINGS.map(c => ({ ...c }));
+
+const NOTIFY_TYPES = [
+  { id: "vacationChange",  label: "휴가변동" },
+  { id: "vacationWeekly",  label: "이번주휴가" },
+  { id: "vacationDaily",   label: "오늘휴가" },
+  { id: "roomChange",      label: "회의실변동" },
+  { id: "roomDaily",       label: "오늘회의실" },
+  { id: "commute",         label: "출근알림" },
+];
+let prevVacationSnapshot = { map: {}, sdate: "", edate: "", updatedAt: "" };
+let prevRoomSnapshot = { map: {}, sdate: "", edate: "", updatedAt: "" };
+
+const cache = { vacation: {}, room: {} };
+const CACHE_TTL = 15 * 60 * 1000; // 10분마다 갱신되므로 15분 설정
+let isSyncing = false;
+
+// ========== 로그 및 유틸 ==========
+function getLogTime() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  return `[${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}]`;
+}
+
+function logger(msg, isError = false) {
+  const fullMsg = `${getLogTime()} ${msg}`;
+  if (isError) console.error(fullMsg);
+  else console.log(fullMsg);
+  try { fs.appendFileSync(LOG_PATH, fullMsg + "\n", "utf8"); } catch (e) {}
+}
+
+app.use((req, res, next) => {
+  logger(`[요청 감시] ${req.method} ${req.url} - IP: ${req.ip}`);
+  next();
+});
+
+function loadSettings() {
+  try {
+    if (fs.existsSync(SETTINGS_PATH)) {
+      const saved = JSON.parse(fs.readFileSync(SETTINGS_PATH, "utf8"));
+      const savedCrons = saved.crons || [];
+      cronSettings = DEFAULT_CRON_SETTINGS.map(def => {
+        const found = savedCrons.find(s => s.id === def.id);
+        return found ? { ...def, ...found } : { ...def };
+      });
+      if (saved.slackBotToken) { SLACK_BOT_TOKEN = saved.slackBotToken; logger(`Slack Bot Token 로드 완료 (settings.json)`); }
+      logger(`크론 설정 로드 완료`);
+    }
+  } catch (err) { logger(`크론 설정 로드 오류: ${err.message}`, true); }
+}
+
+function saveSettings() {
+  try {
+    const data = { crons: cronSettings };
+    if (SLACK_BOT_TOKEN) data.slackBotToken = SLACK_BOT_TOKEN;
+    fs.writeFileSync(SETTINGS_PATH, JSON.stringify(data, null, 2), "utf8");
+  } catch (err) { logger(`크론 설정 저장 오류: ${err.message}`, true); }
+}
+
+// 같은 webhook 엔트리를 합쳐서 중복 발송 방지
+function dedupeByWebhook(type) {
+  const map = new Map();
+  for (const t of teamsData) {
+    const enabled = t.notify ? t.notify[type] !== false : t.enabled !== false;
+    if (!enabled) continue;
+    if (!map.has(t.webhook)) {
+      map.set(t.webhook, { ...t, teams: [...t.teams] });
+    } else {
+      const merged = map.get(t.webhook);
+      t.teams.forEach(name => { if (!merged.teams.includes(name)) merged.teams.push(name); });
+    }
+  }
+  return [...map.values()];
+}
+
+function getCronFn(id) {
+  const thisWeekDates = () => { const d = new Date(); const mon = new Date(d); mon.setDate(d.getDate() - d.getDay() + 1); return Array.from({length:5},(_,i)=>{ const nd = new Date(mon); nd.setDate(mon.getDate()+i); return formatDate(nd); }); };
+  const notify = (t, type) => t.notify ? t.notify[type] !== false : t.enabled !== false;
+  const fns = {
+    sync: () => syncAndCheckChanges(false),
+    vacationWeekly: async () => {
+      try {
+        const d = thisWeekDates(); const list = await fetchVacations(d[0], d[4], true);
+        for (const t of dedupeByWebhook("vacationWeekly")) { await axios.post(t.webhook, buildVacationMessage(d[0], list.filter(i => t.teams.includes(i.deptName)), "이번주 휴가자", true)); }
+      } catch (err) { logger(`[크론 오류] 이번주 휴가 발송 실패: ${err.message}`, true); }
+    },
+    vacationDaily: async () => {
+      try {
+        const t = getToday(); const list = await fetchVacations(t, t, true);
+        for (const td of dedupeByWebhook("vacationDaily")) { await axios.post(td.webhook, buildVacationMessage(t, list.filter(i => td.teams.includes(i.deptName)))); }
+      } catch (err) { logger(`[크론 오류] 오늘 휴가 발송 실패: ${err.message}`, true); }
+    },
+    roomDaily: async () => {
+      try {
+        const t = getToday(); const list = await fetchRooms(t, t, true);
+        for (const td of dedupeByWebhook("roomDaily")) { await axios.post(td.webhook, buildRoomMessage(t, list)); }
+      } catch (err) { logger(`[크론 오류] 오늘 회의실 발송 실패: ${err.message}`, true); }
+    },
+    commute: async () => {
+      try {
+        const today = getToday();
+        const enabledDeptIds = new Set(teamsData.filter(t => notify(t, "commute")).map(t => t.deptId).filter(Boolean));
+        const deptIds = [...new Set(membersData.map(m => m.deptId).filter(id => enabledDeptIds.has(id)))];
+        for (const deptId of deptIds) {
+          const commuteList = await fetchCommuteStatus(today, deptId);
+          for (const record of commuteList.filter(c => !c.workStartTime && c.usName)) {
+            const member = membersData.find(m => m.name === record.usName && m.deptId === deptId);
+            if (!member?.slackId) { logger(`[출근알림] ${record.usName} - 슬랙 ID 없음`); continue; }
+            await sendSlackDM(member.slackId, `안녕하세요 ${record.usName}님 :wave:\n아직 *출근 등록*이 되지 않았습니다. 확인 후 등록 부탁드립니다!`);
+            logger(`[출근알림] DM 발송: ${record.usName}`);
+          }
+        }
+      } catch (err) { logger(`[크론 오류] 출근 알림 실패: ${err.message}`, true); }
+    },
+    sessionKeep: async () => {
+      try { await axios.get(SESSION_KEEP_URL, { headers: { Cookie: avsCookie }, validateStatus: s => true }); } catch { await loginAvs().catch(() => {}); }
+      try { await axios.get(GW_SESSION_URL, { headers: { Cookie: gwCookie }, validateStatus: s => true }); } catch { await loginGw().catch(() => {}); }
+    },
+    logReset: () => { try { fs.writeFileSync(LOG_PATH, "", "utf8"); logger("로그 파일 초기화"); } catch (e) {} },
+  };
+  return fns[id];
+}
+
+function initCrons() {
+  for (const cfg of cronSettings) {
+    const fn = getCronFn(cfg.id);
+    if (!fn) continue;
+    if (cronTasks[cfg.id]) cronTasks[cfg.id].stop();
+    const opts = cfg.noTimezone ? undefined : { timezone: "Asia/Seoul" };
+    cronTasks[cfg.id] = cron.schedule(cfg.schedule, fn, opts);
+    if (!cfg.enabled) cronTasks[cfg.id].stop();
+    logger(`크론 등록: ${cfg.id} (${cfg.schedule}) ${cfg.enabled ? "활성" : "비활성"}`);
+  }
+}
+
+function loadTeams() {
+  try {
+    if (fs.existsSync(TEAMS_PATH)) {
+      teamsData = JSON.parse(fs.readFileSync(TEAMS_PATH, "utf8"));
+      logger(`팀 데이터 로드 완료 (${teamsData.length}팀)`);
+    } else if (teamsData.length) {
+      fs.writeFileSync(TEAMS_PATH, JSON.stringify(teamsData, null, 2), "utf8");
+      logger(`env에서 teams.json 초기화 완료`);
+    }
+  } catch (err) { logger(`팀 데이터 로드 오류: ${err.message}`, true); }
+}
+
+function saveTeams() {
+  try { fs.writeFileSync(TEAMS_PATH, JSON.stringify(teamsData, null, 2), "utf8"); }
+  catch (err) { logger(`팀 데이터 저장 오류: ${err.message}`, true); }
+}
+
+function loadMembers() {
+  try {
+    if (fs.existsSync(MEMBERS_PATH)) {
+      membersData = JSON.parse(fs.readFileSync(MEMBERS_PATH, "utf8"));
+      logger(`멤버 데이터 로드 완료 (${membersData.length}명)`);
+    }
+  } catch (err) { logger(`멤버 데이터 로드 오류: ${err.message}`, true); }
+}
+
+function saveMembers() {
+  try { fs.writeFileSync(MEMBERS_PATH, JSON.stringify(membersData, null, 2), "utf8"); }
+  catch (err) { logger(`멤버 데이터 저장 오류: ${err.message}`, true); }
+}
+
+function saveSnapshot() {
+  try {
+    const data = JSON.stringify({ vacation: prevVacationSnapshot, room: prevRoomSnapshot, updatedAt: new Date().toISOString() }, null, 2);
+    fs.writeFileSync(SNAPSHOT_PATH, data, "utf8");
+  } catch (err) { logger(`스냅샷 저장 오류: ${err.message}`, true); }
+}
+
+function loadSnapshot() {
+  try {
+    if (fs.existsSync(SNAPSHOT_PATH)) {
+      const data = JSON.parse(fs.readFileSync(SNAPSHOT_PATH, "utf8"));
+      prevVacationSnapshot = data.vacation || { map: {} };
+      prevRoomSnapshot = data.room || { map: {} };
+      logger(`스냅샷 복구 완료 (마지막 확인: ${prevVacationSnapshot.updatedAt || "없음"})`);
+    }
+  } catch (err) { logger(`스냅샷 로드 오류: ${err.message}`, true); }
+}
+
+async function getSlackUserTeam(user_id) {
+  if (!SLACK_BOT_TOKEN) {
+    logger("[사용자 감지] SLACK_BOT_TOKEN이 설정되지 않아 팀 감지를 건너뜁니다.");
+    return null;
+  }
+  try {
+    const res = await axios.get(`https://slack.com/api/users.info?user=${user_id}`, { headers: { Authorization: `Bearer ${SLACK_BOT_TOKEN}` } });
+    if (!res.data.ok) {
+      logger(`[사용자 감지] 슬랙 API 오류: ${res.data.error}`);
+      return null;
+    }
+    const profile = res.data.user.profile;
+    const nameStr = profile.display_name || profile.real_name || "";
+    const match = nameStr.match(/\(([^)]+)\)/);
+    const team = match ? match[1].trim() : null;
+    
+    if (team) logger(`[사용자 감지] 이름: "${nameStr}", 추출팀: "${team}"`);
+    else logger(`[사용자 감지] 이름: "${nameStr}", 팀명 추출 실패 (괄호 없음)`);
+    
+    return team;
+  } catch (err) { logger(`[사용자 감지] 에러: ${err.message}`, true); return null; }
+}
+
+function getToday() { return formatDate(new Date()); }
+function formatDate(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
+function parseCookies(h) { return (h ?? []).map(c => c.split(";")[0]).join("; "); }
+function mergeCookies(a, b) {
+  const map = {};
+  [...a.split("; "), ...b.split("; ")].forEach(c => { const i = c.indexOf("="); if (i > 0) map[c.slice(0, i).trim()] = c.slice(i + 1).trim(); });
+  return Object.entries(map).map(([k, v]) => `${k}=${v}`).join("; ");
+}
+function formatTime(s, e) { return s && e ? ` (${s}:00 ~ ${e}:00)` : ""; }
+
+// ========== 로그인 ==========
+async function loginPortal() {
+  const s1 = await axios.get(`${PORTAL_BASE}/portal/login/portal-login`, { headers: { "User-Agent": "Mozilla/5.0" }, maxRedirects: 0, validateStatus: s => s < 400 });
+  let ck = parseCookies(s1.headers["set-cookie"]);
+  const p = new URLSearchParams();
+  p.append("loginType", "IDPWD"); p.append("loginId", LOGIN_ID); p.append("id", LOGIN_ID); p.append("password", LOGIN_PW); p.append("companyRegNo", "");
+  const s2 = await axios.post(`${PORTAL_BASE}/portal/login/ajaxcheck`, p.toString(), {
+    headers: { "Content-Type": "application/x-www-form-urlencoded", "Cookie": ck, "Referer": `${PORTAL_BASE}/portal/login/portal-login`, "Origin": PORTAL_BASE, "ajax": "true", "User-Agent": "Mozilla/5.0" },
+    maxRedirects: 0, validateStatus: s => s < 400
+  });
+  const c2 = parseCookies(s2.headers["set-cookie"]); if (c2) ck = mergeCookies(ck, c2);
+  if (!s2.data?.response?.success) throw new Error("로그인 실패");
+  return ck;
+}
+
+async function getSsoSession(ck, portalPath, base) {
+  const s3 = await axios.get(`${PORTAL_BASE}${portalPath}`, { headers: { "Cookie": ck, "Referer": `${PORTAL_BASE}/portal/login/portal-login`, "User-Agent": "Mozilla/5.0" }, maxRedirects: 0, validateStatus: s => s < 400 });
+  const c3 = parseCookies(s3.headers["set-cookie"]); if (c3) ck = mergeCookies(ck, c3);
+  const ssoUrl = s3.headers["location"]; if (!ssoUrl?.includes("sso-in")) throw new Error(`SSO URL 없음: ${ssoUrl}`);
+  const s4a = await axios.get(ssoUrl, { headers: { "Cookie": ck, "Referer": PORTAL_BASE, "User-Agent": "Mozilla/5.0" }, maxRedirects: 0, validateStatus: s => s < 400 });
+  const c4a = parseCookies(s4a.headers["set-cookie"]); if (c4a) ck = mergeCookies(ck, c4a);
+  let nextUrl = s4a.headers["location"]; if (nextUrl && !nextUrl.startsWith("http")) nextUrl = `${base}${nextUrl}`;
+  if (nextUrl) {
+    const s4b = await axios.get(nextUrl, { headers: { "Cookie": ck, "Referer": ssoUrl, "User-Agent": "Mozilla/5.0" }, maxRedirects: 5, validateStatus: s => s < 400 });
+    const c4b = parseCookies(s4b.headers["set-cookie"]); if (c4b) ck = mergeCookies(ck, c4b);
+  }
+  return ck;
+}
+
+async function loginAvs() { logger(`AVS 로그인 시작...`); const ck = await loginPortal(); avsCookie = await getSsoSession(ck, "/portal/avs?path=/unicloud/view/avs-dashboard", UNICLOUD_BASE); logger(`AVS 로그인 완료`); }
+async function loginGw() { logger(`GW 로그인 시작...`); const ck = await loginPortal(); gwCookie = await getSsoSession(ck, "/portal/gw?path=/unicloud/view/gw-equip-reservation", GW_BASE); logger(`GW 로그인 완료`); }
+async function loginAll() { await loginAvs(); await loginGw(); }
+
+// ========== 데이터 연동 핵심 로직 ==========
+async function fetchVacations(sdate, edate, useCache = false, retry = 0) {
+  const cacheKey = `${sdate}~${edate}`;
+  if (useCache) {
+    if (cache.vacation[cacheKey] && (Date.now() - cache.vacation[cacheKey].updatedAt < CACHE_TTL)) return cache.vacation[cacheKey].data;
+    if (prevVacationSnapshot.sdate && prevVacationSnapshot.edate && sdate >= prevVacationSnapshot.sdate && edate <= prevVacationSnapshot.edate) {
+      return Object.values(prevVacationSnapshot.map || {}).filter(item => (item.useSdate ?? "") <= edate && sdate <= (item.useEdate ?? ""));
+    }
+  }
+  if (!avsCookie) await loginAvs();
+  const res = await axios.post(TARGET_URL, { coRegno: "1048621562", sSdate: sdate, sEdate: edate, itemIds: ITEM_IDS, userStatus: "10", procSts: "S" }, {
+    headers: { "Content-Type": "application/json", "Cookie": avsCookie, "Origin": UNICLOUD_BASE, "Referer": SESSION_KEEP_URL, "ajax": "true", "x-requested-with": "XMLHttpRequest", "__service_id__": "AVS", "__view_id__": "avs-use-month-report", "__req_co_regno__": "1048621562", "__req_us_id__": LOGIN_ID, "User-Agent": "Mozilla/5.0" },
+    validateStatus: s => s < 1000
+  });
+  if (res.status === 900 || (typeof res.data === "string" && res.data.includes("<!DOCTYPE"))) {
+    if (retry >= 3) throw new Error("AVS 세션 재로그인 3회 초과");
+    logger(`AVS 세션 만료 감지 - 재로그인 후 재시도 (${retry + 1}/3)`);
+    await loginAvs(); return fetchVacations(sdate, edate, false, retry + 1);
+  }
+  const result = (res.data?.response ?? []).filter(item => (item.useSdate ?? "") <= edate && sdate <= (item.useEdate ?? ""))
+    .map(item => ({ usName: item.usName, deptName: item.deptName, timeUnitName: item.timeUnitName, useSdate: item.useSdate, useEdate: item.useEdate, useTimeTypeName: item.useTimeTypeName ?? null, useTimeType: item.useTimeType ?? null, useStime: item.useStime ?? null, useEtime: item.useEtime ?? null }));
+  cache.vacation[cacheKey] = { data: result, updatedAt: Date.now() };
+  logger(`휴가 데이터 수신 (${sdate}~${edate}, ${result.length}명)`);
+  return result;
+}
+
+async function fetchCommuteStatus(date, deptId, retry = 0) {
+  if (!avsCookie) await loginAvs();
+  const dateStr = date.replace(/-/g, "");
+  const res = await axios.post(COMMUTE_URL, {
+    deptId,
+    usId: "",
+    sDate: dateStr,
+    eDate: dateStr,
+    workTypeIds: ["FIXED", "FIXED_WEEKDAY", "FLEX"],
+  }, {
+    headers: {
+      "Content-Type": "application/json", "Cookie": avsCookie,
+      "Origin": UNICLOUD_BASE, "Referer": `${UNICLOUD_BASE}/unicloud/view/avs-commute-calendar`,
+      "ajax": "true", "x-requested-with": "XMLHttpRequest",
+      "__service_id__": "AVS", "__view_id__": "avs-commute-calendar", "__menu_id__": "MAV1200",
+      "__req_co_regno__": "1048621562", "__req_us_id__": LOGIN_ID, "User-Agent": "Mozilla/5.0"
+    },
+    validateStatus: s => s < 1000
+  });
+  if (res.status === 900 || (typeof res.data === "string" && res.data.includes("<!DOCTYPE"))) {
+    if (retry >= 3) throw new Error("출퇴근 세션 재로그인 3회 초과");
+    logger(`출퇴근 세션 만료 - 재로그인 (${retry + 1}/3)`);
+    await loginAvs();
+    return fetchCommuteStatus(date, deptId, retry + 1);
+  }
+  const list = res.data?.response?.avsCommuteWeekList ?? [];
+  logger(`출퇴근 데이터 수신 (${date}, deptId:${deptId}, ${list.length}명)`);
+  return list;
+}
+
+async function sendSlackDM(userId, text) {
+  if (!SLACK_BOT_TOKEN) { logger(`[DM] SLACK_BOT_TOKEN 없음 - 스킵`); return; }
+  try {
+    const res = await axios.post("https://slack.com/api/chat.postMessage",
+      { channel: userId, text },
+      { headers: { Authorization: `Bearer ${SLACK_BOT_TOKEN}`, "Content-Type": "application/json" } }
+    );
+    if (!res.data.ok) logger(`[DM] 발송 실패 (${userId}): ${res.data.error}`, true);
+  } catch (err) { logger(`[DM] 오류 (${userId}): ${err.message}`, true); }
+}
+
+async function fetchRooms(sdate, edate, useCache = false, retry = 0) {
+  const cacheKey = `${sdate}~${edate}`;
+  if (useCache) {
+    if (cache.room[cacheKey] && (Date.now() - cache.room[cacheKey].updatedAt < CACHE_TTL)) return cache.room[cacheKey].data;
+    if (prevRoomSnapshot.sdate && prevRoomSnapshot.edate && sdate >= prevRoomSnapshot.sdate && edate <= prevRoomSnapshot.edate) {
+      return Object.values(prevRoomSnapshot.map || {}).filter(item => { const d = item.start?.slice(0, 10); return d >= sdate && d <= edate; });
+    }
+  }
+  if (!gwCookie) await loginGw();
+  const res = await axios.post(GW_TARGET_URL, { useMyReservation: false, activeStart: sdate, activeEnd: edate, labels: ["1"], equipSeqList: EQUIP_LIST.map(e => e.seq) }, {
+    headers: { "Content-Type": "application/json", "Cookie": gwCookie, "Origin": GW_BASE, "Referer": GW_SESSION_URL, "ajax": "true", "x-requested-with": "XMLHttpRequest", "__service_id__": "GW", "__view_id__": "gw-equip-reservation", "__menu_id__": "GW080010", "User-Agent": "Mozilla/5.0" },
+    validateStatus: s => s < 1000
+  });
+  if (res.status === 900 || (typeof res.data === "string" && res.data.includes("<!DOCTYPE"))) {
+    if (retry >= 3) throw new Error("GW 세션 재로그인 3회 초과");
+    logger(`GW 세션 만료 감지 - 재로그인 후 재시도 (${retry + 1}/3)`);
+    await loginGw(); return fetchRooms(sdate, edate, false, retry + 1);
+  }
+  const result = (res.data?.response ?? []).filter(item => (item.start?.slice(0, 10) ?? "") >= sdate && (item.start?.slice(0, 10) ?? "") <= edate);
+  cache.room[cacheKey] = { data: result, updatedAt: Date.now() };
+  logger(`회의실 데이터 수신 (${sdate}~${edate}, ${result.length}건)`);
+  return result;
+}
+
+// 10분 주기 동기화 & 변동 감지
+async function syncAndCheckChanges(isManual = false) {
+  if (isSyncing) { logger(`[동기화 스킵] 이전 동기화 진행 중`); return false; }
+  isSyncing = true;
+  try {
+    const mode = isManual ? "수동 업데이트" : "정기 체크(10분)";
+    logger(`${mode} 시작...`);
+    
+    const today = getToday();
+    const sixtyDaysLater = formatDate(new Date(Date.now() + 60 * 24 * 60 * 60 * 1000));
+    
+    const [vList, rList] = await Promise.all([ fetchVacations(today, sixtyDaysLater, false), fetchRooms(today, today, false) ]);
+
+    // 1. 휴가 변동 체크
+    const vKey = i => `${i.usName}_${i.deptName}_${i.timeUnitName}_${i.useTimeType ?? ""}_${i.useSdate ?? ""}`;
+    const vCurrMap = {}; vList.forEach(i => { vCurrMap[vKey(i)] = i; });
+    
+    if (prevVacationSnapshot.map && Object.keys(prevVacationSnapshot.map).length > 0) {
+      const added = vList.filter(i => !prevVacationSnapshot.map[vKey(i)]);
+      const removed = Object.values(prevVacationSnapshot.map).filter(i => !vCurrMap[vKey(i)]);
+      
+      if (added.length || removed.length) {
+        logger(`[변동 감지] 휴가 변경 사항이 발견되었습니다. (추가: ${added.length}, 취소: ${removed.length})`);
+        const formatItem = (m) => `*${m.usName}* (${m.deptName}) ${m.useSdate} ${m.timeUnitName}${m.useTimeTypeName ? " "+m.useTimeTypeName : ""}${(m.timeUnitName === "시간" && m.useStime) ? ` (${m.useStime}:00~${m.useEtime}:00)` : ""}`;
+        
+        for (const t of dedupeByWebhook("vacationChange")) {
+          const { teams, webhook } = t;
+          const teamAdded = added.filter(i => teams.includes(i.deptName));
+          const teamRemoved = removed.filter(i => teams.includes(i.deptName));
+          if (!teamAdded.length && !teamRemoved.length) continue;
+          
+          const blocks = [ { type: "header", text: { type: "plain_text", text: `휴가 변동사항 알림` } }, { type: "divider" } ];
+          if (teamAdded.length) { 
+            teamAdded.forEach(m => logger(`  + [추가] ${m.usName}(${m.deptName}) ${m.useSdate}`));
+            blocks.push({ type: "section", text: { type: "mrkdwn", text: teamAdded.map(m => `+ ${formatItem(m)} 추가`).join("\n") } }); 
+          }
+          if (teamRemoved.length) { 
+            teamRemoved.forEach(m => logger(`  - [취소] ${m.usName}(${m.deptName}) ${m.useSdate}`));
+            blocks.push({ type: "section", text: { type: "mrkdwn", text: teamRemoved.map(m => `- ${formatItem(m)} 취소`).join("\n") } }); 
+          }
+          blocks.push(buildFooter());
+          await axios.post(webhook, { blocks });
+        }
+      } else { logger(`[변동 감지] 휴가 변동 사항 없음`); }
+    }
+
+    // 2. 회의실 변동 체크
+    const rCurrMap = {}; rList.forEach(i => { rCurrMap[i.id] = i; });
+    logger(`[변동 감지] 회의실 현재 데이터: ${rList.length}건, 이전 스냅샷: ${Object.keys(prevRoomSnapshot.map || {}).length}건 (날짜: ${prevRoomSnapshot.sdate || "없음"})`);
+    if (prevRoomSnapshot.sdate === today) {
+      const added = rList.filter(i => !prevRoomSnapshot.map[i.id]);
+      const removed = Object.values(prevRoomSnapshot.map).filter(i => !rCurrMap[i.id]);
+      
+      if (added.length || removed.length) {
+        logger(`[변동 감지] 회의실 변경 사항이 발견되었습니다. (추가: ${added.length}, 취소: ${removed.length})`);
+        for (const t of dedupeByWebhook("roomChange")) {
+          const { webhook } = t;
+          const blocks = [ { type: "header", text: { type: "plain_text", text: `회의실 예약 변동사항 알림` } }, { type: "divider" } ];
+          if (added.length) { 
+            added.forEach(m => logger(`  + [추가] ${m.equipName} | ${m.title}`));
+            blocks.push({ type: "section", text: { type: "mrkdwn", text: added.map(m => `+ *${m.equipName}* | ${m.title} | ${m.reservatUsName} | ${m.start.slice(0, 10)} ${m.start.slice(11, 16)}~${m.end.slice(11, 16)} 추가`).join("\n") } });
+          }
+          if (removed.length) {
+            removed.forEach(m => logger(`  - [취소] ${m.equipName} | ${m.title}`));
+            blocks.push({ type: "section", text: { type: "mrkdwn", text: removed.map(m => `- *${m.equipName}* | ${m.title} | ${m.reservatUsName} | ${m.start.slice(0, 10)} ${m.start.slice(11, 16)}~${m.end.slice(11, 16)} 취소`).join("\n") } });
+          }
+          blocks.push(buildFooter("room"));
+          await axios.post(webhook, { blocks });
+        }
+      } else { logger(`[변동 감지] 회의실 변동 사항 없음`); }
+    } else {
+      if (!prevRoomSnapshot.map || Object.keys(prevRoomSnapshot.map).length === 0) logger(`[변동 감지] 회의실 이전 스냅샷 없음 - 비교 스킵`);
+      else if (prevRoomSnapshot.sdate !== today) logger(`[변동 감지] 회의실 날짜 불일치 (스냅샷: ${prevRoomSnapshot.sdate}, 오늘: ${today}) - 비교 스킵`);
+    }
+
+    // 데이터 및 파일 업데이트 (무조건 업데이트하여 '마지막 확인 시간' 갱신)
+    prevVacationSnapshot = { map: vCurrMap, sdate: today, edate: sixtyDaysLater, updatedAt: new Date().toISOString() };
+    prevRoomSnapshot = { map: rCurrMap, sdate: today, edate: today, updatedAt: new Date().toISOString() };
+    cache.vacation = {};
+    cache.room = {};
+    saveSnapshot();
+    
+    logger(`${mode} 완료`);
+    return true;
+  } catch (err) { logger(`체크 실패: ${err.message}`, true); return false; }
+  finally { isSyncing = false; }
+}
+
+// ========== 메시지 빌더 ==========
+function buildFooter(type = "vacation") {
+  const snapshot = type === "room" ? prevRoomSnapshot : prevVacationSnapshot;
+  const lastCheck = snapshot.updatedAt ? new Date(snapshot.updatedAt).toLocaleString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: true }) : "기록 없음";
+  const cmd = type === "room" ? "/회의실 업데이트" : "/휴가 업데이트";
+  return { type: "context", elements: [ { type: "mrkdwn", text: `마지막 데이터 확인: ${lastCheck} | \`${cmd}\`로 즉시 갱신` } ] };
+}
+
+function buildVacationMessage(date, list, title, showDate = false, groupTeams = null) {
+  const headerText = title ?? `${date} 오늘의 휴가자 (총 ${list.length}명)`;
+  if (list.length === 0) return { text: headerText, blocks: [ { type: "header", text: { type: "plain_text", text: headerText } }, { type: "section", text: { type: "mrkdwn", text: "휴가자가 없습니다." } }, buildFooter() ] };
+  const blocks = [ { type: "header", text: { type: "plain_text", text: headerText } }, { type: "divider" } ];
+  const formatItem = (m) => `• *${m.usName}* (${m.deptName}) ${m.useSdate} ${m.timeUnitName}${m.useTimeTypeName ? " "+m.useTimeTypeName : ""}${formatTime(m.useStime, m.useEtime)}`;
+  if (groupTeams) {
+    for (const group of groupTeams) {
+      const gList = list.filter(i => group.teams.includes(i.deptName));
+      if (gList.length === 0) continue;
+      blocks.push({ type: "section", text: { type: "mrkdwn", text: `*${group.teams.join(", ")}* (총 ${gList.length}명)\n${gList.map(formatItem).join("\n")}` } });
+      blocks.push({ type: "divider" });
+    }
+  } else if (showDate) {
+    const byDate = {};
+    list.forEach(i => { const d = i.useSdate ?? ""; if (!byDate[d]) byDate[d] = []; byDate[d].push(i); });
+    Object.keys(byDate).sort().forEach(d => {
+      blocks.push({ type: "section", text: { type: "mrkdwn", text: `*${d}* (${byDate[d].length}명)\n${byDate[d].map(formatItem).join("\n")}` } });
+      blocks.push({ type: "divider" });
+    });
+  } else {
+    const lines = list.map(formatItem).join("\n");
+    blocks.push({ type: "section", text: { type: "mrkdwn", text: lines } });
+  }
+  blocks.push(buildFooter());
+  return { blocks };
+}
+
+function buildRoomMessage(sdate, list, edate = null) {
+  const isRange = edate && edate !== sdate; const headerDate = isRange ? `${sdate} ~ ${edate}` : sdate;
+  const blocks = [ { type: "header", text: { type: "plain_text", text: `${headerDate} 회의실 예약 현황 (총 ${list.length}건)` } }, { type: "divider" } ];
+  if (list.length === 0) blocks.push({ type: "section", text: { type: "mrkdwn", text: "예약이 없습니다." } });
+  else {
+    const lines = list.sort((a,b) => a.start.localeCompare(b.start)).map(m => `• ${m.start.slice(11, 16)} ~ ${m.end.slice(11, 16)} | *${m.equipName}* | ${m.title} | ${m.reservatUsName}`).join("\n");
+    blocks.push({ type: "section", text: { type: "mrkdwn", text: lines } });
+  }
+  blocks.push(buildFooter("room"));
+  return { blocks };
+}
+
+// ========== 출근 현황 API ==========
+app.get("/api/commute/status", async (req, res) => {
+  try {
+    const today = getToday();
+    const deptIds = [...new Set(membersData.map(m => m.deptId).filter(Boolean))];
+    const commuteMap = {};
+    for (const deptId of deptIds) {
+      const list = await fetchCommuteStatus(today, deptId);
+      list.forEach(c => { if (c.usName) commuteMap[c.usName] = c; });
+    }
+    const result = membersData.map((m, i) => {
+      const c = commuteMap[m.name];
+      return { index: i, name: m.name, teamName: m.teamName, slackId: m.slackId, deptId: m.deptId,
+        checkedIn: !!(c?.workStartTime), workStartTime: c?.workStartTime ?? null };
+    });
+    res.json({ date: today, members: result });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post("/api/commute/notify", async (req, res) => {
+  const { indices } = req.body; // 특정 인덱스만, 없으면 미출근자 전체
+  try {
+    const today = getToday();
+    const deptIds = [...new Set(membersData.map(m => m.deptId).filter(Boolean))];
+    const commuteMap = {};
+    for (const deptId of deptIds) {
+      const list = await fetchCommuteStatus(today, deptId);
+      list.forEach(c => { if (c.usName) commuteMap[c.usName] = c; });
+    }
+    const enabledDeptIds = new Set(teamsData.filter(t => t.enabled !== false).map(t => t.deptId).filter(Boolean));
+    const { force } = req.body;
+    const targets = membersData
+      .map((m, i) => ({ ...m, index: i, checkedIn: !!(commuteMap[m.name]?.workStartTime) }))
+      .filter(m => (indices ? indices.includes(m.index) : (!m.checkedIn || force)) && enabledDeptIds.has(m.deptId));
+
+    const sent = [];
+    for (const m of targets) {
+      if (!m.slackId) continue;
+      await sendSlackDM(m.slackId, `안녕하세요 ${m.name}님 :wave:\n아직 *출근 등록*이 되지 않았습니다. 확인 후 등록 부탁드립니다!\nhttps://unipost.co.kr/portal/my-service`);
+      logger(`[수동 출근알림] DM 발송: ${m.name}`);
+      sent.push(m.name);
+    }
+    res.json({ ok: true, sent });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ========== 설정 API ==========
+app.get("/api/settings", (req, res) => {
+  const token = SLACK_BOT_TOKEN || "";
+  res.json({ slackBotToken: token ? token.slice(0, 10) + "…" + token.slice(-4) : "" });
+});
+
+app.put("/api/settings", (req, res) => {
+  const { slackBotToken } = req.body;
+  if (typeof slackBotToken === "string" && slackBotToken.trim()) {
+    SLACK_BOT_TOKEN = slackBotToken.trim();
+    saveSettings();
+    logger(`[설정] Slack Bot Token 업데이트`);
+    res.json({ ok: true });
+  } else {
+    res.status(400).json({ error: "토큰 값이 없습니다" });
+  }
+});
+
+// ========== 크론 관리 API ==========
+app.get("/api/crons", (req, res) => res.json(cronSettings));
+
+app.put("/api/crons/:id", (req, res) => {
+  const { id } = req.params;
+  const { enabled, schedule } = req.body;
+  const cfg = cronSettings.find(c => c.id === id);
+  if (!cfg) return res.status(404).json({ error: "없는 크론" });
+  if (typeof enabled === "boolean") cfg.enabled = enabled;
+  if (schedule) cfg.schedule = schedule;
+  saveSettings();
+  // 재등록
+  const fn = getCronFn(id);
+  if (fn) {
+    if (cronTasks[id]) cronTasks[id].stop();
+    const opts = cfg.noTimezone ? undefined : { timezone: "Asia/Seoul" };
+    cronTasks[id] = cron.schedule(cfg.schedule, fn, opts);
+    if (!cfg.enabled) cronTasks[id].stop();
+  }
+  logger(`[크론] ${id} 업데이트: ${cfg.enabled ? "활성" : "비활성"}, ${cfg.schedule}`);
+  res.json({ ok: true, cron: cfg });
+});
+
+// ========== 팀 알림 타입 토글 API ==========
+app.post("/api/teams/:index/test", async (req, res) => {
+  const idx = parseInt(req.params.index);
+  if (isNaN(idx) || idx < 0 || idx >= teamsData.length) return res.status(404).json({ error: "없는 인덱스" });
+  const t = teamsData[idx];
+  const notify = (type) => t.notify ? t.notify[type] !== false : t.enabled !== false;
+  const today = getToday();
+  const sent = [];
+  try {
+    if (notify("vacationChange")) {
+      await axios.post(t.webhook, { blocks: [
+        { type: "header", text: { type: "plain_text", text: "[테스트] 휴가 변동사항 알림" } }, { type: "divider" },
+        { type: "section", text: { type: "mrkdwn", text: `+ *홍길동* (${t.teams[0]}) ${today} 연차 추가\n- *김철수* (${t.teams[0]}) ${today} 반차 취소` } },
+        { type: "context", elements: [{ type: "mrkdwn", text: `테스트 발송 · ${new Date().toLocaleString("ko-KR")}` }] }
+      ]});
+      sent.push("휴가변동");
+    }
+    if (notify("vacationWeekly")) {
+      await axios.post(t.webhook, buildVacationMessage(today, [
+        { usName: "홍길동", deptName: t.teams[0], timeUnitName: "연차", useSdate: today, useEdate: today, useTimeTypeName: null, useStime: null, useEtime: null }
+      ], `[테스트] 이번주 휴가자`, true));
+      sent.push("이번주휴가");
+    }
+    if (notify("vacationDaily")) {
+      await axios.post(t.webhook, buildVacationMessage(today, [
+        { usName: "홍길동", deptName: t.teams[0], timeUnitName: "반차", useSdate: today, useEdate: today, useTimeTypeName: "오전", useStime: "09", useEtime: "13" }
+      ], `[테스트] ${today} 오늘 휴가자`));
+      sent.push("오늘휴가");
+    }
+    if (notify("roomChange")) {
+      await axios.post(t.webhook, { blocks: [
+        { type: "header", text: { type: "plain_text", text: "[테스트] 회의실 예약 변동사항 알림" } }, { type: "divider" },
+        { type: "section", text: { type: "mrkdwn", text: `+ *중회의실(에땅)* | 주간 스프린트 | 홍길동 | ${today} 10:00~11:00 추가` } },
+        { type: "context", elements: [{ type: "mrkdwn", text: `테스트 발송 · ${new Date().toLocaleString("ko-KR")}` }] }
+      ]});
+      sent.push("회의실변동");
+    }
+    if (notify("roomDaily")) {
+      await axios.post(t.webhook, buildRoomMessage(today, [
+        { id: "test1", equipName: "중회의실(에땅)", title: "주간 스프린트", reservatUsName: "홍길동", start: `${today}T10:00:00`, end: `${today}T11:00:00` }
+      ]));
+      sent.push("오늘회의실");
+    }
+    if (notify("commute")) {
+      await axios.post(t.webhook, { blocks: [
+        { type: "header", text: { type: "plain_text", text: "[테스트] 출근 알림 (DM 샘플)" } }, { type: "divider" },
+        { type: "section", text: { type: "mrkdwn", text: `안녕하세요 홍길동님 :wave:\n아직 *출근 등록*이 되지 않았습니다. 확인 후 등록 부탁드립니다!` } },
+        { type: "context", elements: [{ type: "mrkdwn", text: `실제 알림은 Slack DM으로 개별 발송됩니다 · ${new Date().toLocaleString("ko-KR")}` }] }
+      ]});
+      sent.push("출근알림");
+    }
+    res.json({ ok: true, sent });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.patch("/api/teams/:index/notify/:type", (req, res) => {
+  const idx = parseInt(req.params.index);
+  const { type } = req.params;
+  if (isNaN(idx) || idx < 0 || idx >= teamsData.length) return res.status(404).json({ error: "없는 인덱스" });
+  if (!NOTIFY_TYPES.find(n => n.id === type)) return res.status(400).json({ error: "없는 타입" });
+  const t = teamsData[idx];
+  if (!t.notify) t.notify = {};
+  t.notify[type] = t.notify[type] === false ? true : false;
+  saveTeams();
+  res.json({ ok: true, enabled: t.notify[type] !== false });
+});
+
+// ========== Slack 유저 목록 API ==========
+app.get("/api/slack/users", async (req, res) => {
+  if (!SLACK_BOT_TOKEN) return res.status(400).json({ error: "SLACK_BOT_TOKEN 없음" });
+  try {
+    const result = [];
+    let cursor;
+    do {
+      const r = await axios.get("https://slack.com/api/users.list", {
+        headers: { Authorization: `Bearer ${SLACK_BOT_TOKEN}` },
+        params: { limit: 200, ...(cursor ? { cursor } : {}) }
+      });
+      if (!r.data.ok) return res.status(500).json({ error: r.data.error });
+      r.data.members
+        .filter(u => !u.is_bot && !u.deleted && u.id !== "USLACKBOT")
+        .forEach(u => result.push({
+          id: u.id,
+          name: u.profile.display_name || u.profile.real_name || u.name,
+          real_name: u.profile.real_name || ""
+        }));
+      cursor = r.data.response_metadata?.next_cursor;
+    } while (cursor);
+    res.json(result);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ========== 팀 관리 API ==========
+app.get("/api/teams", (req, res) => res.json(teamsData));
+
+app.post("/api/teams", (req, res) => {
+  const { teams, webhook, channel_id, deptId } = req.body;
+  if (!teams?.length || !webhook) return res.status(400).json({ error: "필드 누락" });
+  teamsData.push({ teams, webhook, channel_id: channel_id || "", deptId: deptId || "" });
+  saveTeams();
+  res.json({ ok: true });
+});
+
+app.put("/api/teams/:index", (req, res) => {
+  const idx = parseInt(req.params.index);
+  if (isNaN(idx) || idx < 0 || idx >= teamsData.length) return res.status(404).json({ error: "없는 인덱스" });
+  const { teams, webhook, channel_id, deptId } = req.body;
+  if (!teams?.length || !webhook) return res.status(400).json({ error: "필드 누락" });
+  teamsData[idx] = { teams, webhook, channel_id: channel_id || "", deptId: deptId || "", enabled: teamsData[idx].enabled ?? true };
+  saveTeams();
+  res.json({ ok: true });
+});
+
+app.patch("/api/teams/:index/toggle", (req, res) => {
+  const idx = parseInt(req.params.index);
+  if (isNaN(idx) || idx < 0 || idx >= teamsData.length) return res.status(404).json({ error: "없는 인덱스" });
+  teamsData[idx].enabled = !(teamsData[idx].enabled ?? true);
+  saveTeams();
+  res.json({ ok: true, enabled: teamsData[idx].enabled });
+});
+
+app.delete("/api/teams/:index", (req, res) => {
+  const idx = parseInt(req.params.index);
+  if (isNaN(idx) || idx < 0 || idx >= teamsData.length) return res.status(404).json({ error: "없는 인덱스" });
+  teamsData.splice(idx, 1);
+  saveTeams();
+  res.json({ ok: true });
+});
+
+// ========== 멤버 관리 API ==========
+app.get("/api/members", (req, res) => res.json(membersData));
+
+app.post("/api/members", (req, res) => {
+  const { deptId, teamName, name, slackId } = req.body;
+  if (!deptId || !teamName || !name || !slackId) return res.status(400).json({ error: "필드 누락" });
+  const exists = membersData.find(m => m.deptId === deptId && m.name === name);
+  if (exists) return res.status(409).json({ error: "이미 존재하는 멤버" });
+  membersData.push({ deptId, teamName, name, slackId });
+  saveMembers();
+  res.json({ ok: true });
+});
+
+app.put("/api/members/:index", (req, res) => {
+  const idx = parseInt(req.params.index);
+  if (isNaN(idx) || idx < 0 || idx >= membersData.length) return res.status(404).json({ error: "없는 인덱스" });
+  const { deptId, teamName, name, slackId } = req.body;
+  if (!deptId || !teamName || !name || !slackId) return res.status(400).json({ error: "필드 누락" });
+  membersData[idx] = { deptId, teamName, name, slackId };
+  saveMembers();
+  res.json({ ok: true });
+});
+
+app.delete("/api/members/:index", (req, res) => {
+  const idx = parseInt(req.params.index);
+  if (isNaN(idx) || idx < 0 || idx >= membersData.length) return res.status(404).json({ error: "없는 인덱스" });
+  membersData.splice(idx, 1);
+  saveMembers();
+  res.json({ ok: true });
+});
+
+app.get("/admin", (req, res) => {
+  res.send(`<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>슬랙봇 관리</title>
+<style>
+:root{--bg:#0d0f18;--surface:#141622;--surface2:#1a1d2e;--border:#242840;--border2:#2e3354;--primary:#5865f2;--primary-dim:#3d4bc4;--text:#e2e8f0;--text2:#94a3b8;--text3:#475569;--green:#16a34a;--green-bg:#052e16;--red:#dc2626;--red-bg:#450a0a;--yellow:#ca8a04;--mono:'JetBrains Mono','Fira Code',monospace}
+[data-theme="light"]{--bg:#f1f5f9;--surface:#ffffff;--surface2:#f8fafc;--border:#e2e8f0;--border2:#cbd5e1;--primary:#5865f2;--primary-dim:#3d4bc4;--text:#0f172a;--text2:#334155;--text3:#94a3b8;--green:#16a34a;--green-bg:#dcfce7;--red:#dc2626;--red-bg:#fee2e2;--yellow:#ca8a04;--mono:'JetBrains Mono','Fira Code',monospace}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Pretendard','Segoe UI',system-ui,sans-serif;min-height:100vh;display:flex}
+/* 사이드바 */
+.sidebar{width:220px;min-height:100vh;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:0;flex-shrink:0;position:fixed;top:0;left:0;bottom:0}
+.sidebar-logo{padding:24px 20px 20px;border-bottom:1px solid var(--border)}
+.sidebar-logo h1{font-size:1rem;font-weight:700;color:var(--text);letter-spacing:-0.3px}
+.sidebar-logo p{font-size:0.72rem;color:var(--text3);margin-top:3px}
+.nav{padding:12px 8px;flex:1}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;cursor:pointer;color:var(--text2);font-size:0.87rem;margin-bottom:2px;transition:all 0.15s;border:none;background:none;width:100%;text-align:left}
+.nav-item:hover{background:var(--surface2);color:var(--text)}
+.nav-item.active{background:rgba(88,101,242,0.15);color:var(--primary);font-weight:500}
+.nav-item .icon{font-size:1rem;width:20px;text-align:center}
+/* 메인 */
+.main{margin-left:220px;flex:1;padding:32px;max-width:1200px}
+.page-header{margin-bottom:28px}
+.page-header h2{font-size:1.25rem;font-weight:700;color:var(--text)}
+.page-header p{font-size:0.83rem;color:var(--text3);margin-top:4px}
+.panel{display:none}.panel.active{display:block}
+/* 카드 */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:24px;margin-bottom:16px}
+.card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+.card-title{font-size:0.85rem;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:0.5px}
+/* 폼 */
+.form-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;align-items:end}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-size:0.75rem;font-weight:500;color:var(--text3);text-transform:uppercase;letter-spacing:0.4px}
+input,select{background:var(--bg);border:1px solid var(--border2);border-radius:8px;color:var(--text);padding:8px 12px;font-size:0.88rem;width:100%;transition:border-color 0.15s;font-family:inherit}
+input:focus,select:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(88,101,242,0.12)}
+.hint{font-size:0.72rem;color:var(--text3);margin-top:2px}
+/* 버튼 */
+button{border:none;border-radius:8px;cursor:pointer;font-size:0.85rem;font-weight:500;padding:8px 16px;transition:all 0.15s;white-space:nowrap;font-family:inherit}
+.btn-primary{background:var(--primary);color:#fff}.btn-primary:hover{background:var(--primary-dim)}
+.btn-secondary{background:var(--surface2);color:var(--text2);border:1px solid var(--border2)}.btn-secondary:hover{color:var(--text);border-color:var(--primary)}
+.btn-danger{background:transparent;color:#f87171;border:1px solid #7f1d1d}.btn-danger:hover{background:#7f1d1d;color:#fff}
+.btn-success{background:transparent;color:#4ade80;border:1px solid #14532d}.btn-success:hover{background:#14532d;color:#fff}
+.btn-ghost{background:transparent;color:var(--text3);border:1px solid var(--border)}.btn-ghost:hover{color:var(--text);border-color:var(--border2)}
+.btn-sm{padding:4px 10px;font-size:0.78rem;border-radius:6px}
+/* 테이블 */
+.table-wrap{overflow-x:auto;margin:-4px}
+table{width:100%;border-collapse:collapse;min-width:600px}
+th{padding:8px 12px;text-align:left;font-size:0.72rem;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid var(--border)}
+td{padding:12px;border-bottom:1px solid var(--border);font-size:0.87rem;vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(255,255,255,0.02)}
+.actions{display:flex;gap:6px;justify-content:flex-end}
+/* 배지 */
+.tag{background:rgba(88,101,242,0.15);border:1px solid rgba(88,101,242,0.3);border-radius:6px;padding:2px 8px;font-size:0.75rem;color:#818cf8;white-space:nowrap}
+.badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:5px;font-size:0.73rem;border:1px solid;cursor:pointer;transition:all 0.15s;white-space:nowrap;user-select:none}
+.badge-on{background:rgba(88,101,242,0.12);color:#818cf8;border-color:rgba(88,101,242,0.3)}.badge-on:hover{background:rgba(88,101,242,0.2)}
+.badge-off{background:transparent;color:var(--text3);border-color:var(--border)}.badge-off:hover{color:var(--text2);border-color:var(--border2)}
+.mono{font-family:var(--mono);color:var(--text2);font-size:0.8rem}
+.empty{color:var(--text3);text-align:center;padding:32px 0;font-size:0.87rem}
+/* 토글 */
+.toggle{width:40px;height:22px;border-radius:11px;cursor:pointer;position:relative;transition:background 0.2s;flex-shrink:0}
+.toggle-knob{position:absolute;top:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:all 0.2s}
+/* 출근 카드 */
+.commute-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
+.commute-card{background:var(--surface);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:10px;transition:transform 0.15s}
+.commute-card:hover{transform:translateY(-1px)}
+/* 토스트 */
+.toast{position:fixed;bottom:24px;right:24px;background:var(--surface2);border:1px solid var(--border2);border-radius:10px;padding:12px 18px;font-size:0.87rem;display:none;z-index:999;box-shadow:0 8px 24px rgba(0,0,0,0.4);max-width:320px}
+/* 드롭다운 */
+.dropdown{position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--surface2);border:1px solid var(--primary);border-radius:10px;z-index:50;max-height:220px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,0.4);display:none}
+.dropdown-item{padding:9px 14px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-size:0.87rem;border-bottom:1px solid var(--border)}
+.dropdown-item:last-child{border-bottom:none}
+.dropdown-item:hover{background:rgba(88,101,242,0.1)}
+/* 구분선 */
+.divider{height:1px;background:var(--border);margin:16px 0}
+</style>
+</head>
+<body>
+
+<div class="sidebar">
+  <div class="sidebar-logo">
+    <h1>슬랙봇 관리</h1>
+    <p>100.109.108.36:3000</p>
+  </div>
+  <nav class="nav">
+    <button class="nav-item active" onclick="switchTab('teams')"><span class="icon">🔗</span> 팀 · Webhook</button>
+    <button class="nav-item" onclick="switchTab('members')"><span class="icon">👤</span> 출근알림 멤버</button>
+    <button class="nav-item" onclick="switchTab('commute')"><span class="icon">🏢</span> 출근 현황</button>
+    <button class="nav-item" onclick="switchTab('crons')"><span class="icon">⏱</span> 크론 관리</button>
+    <button class="nav-item" onclick="switchTab('settings')"><span class="icon">⚙️</span> 설정</button>
+  </nav>
+  <div style="padding:12px 8px;border-top:1px solid var(--border)">
+    <button class="btn-ghost" onclick="toggleTheme()" id="theme-btn" style="width:100%;display:flex;align-items:center;gap:8px;padding:9px 12px;font-size:0.87rem">
+      <span id="theme-icon">☀️</span><span id="theme-label">라이트 모드</span>
+    </button>
+  </div>
+</div>
+
+<div class="main">
+
+<!-- 팀 패널 -->
+<div class="panel active" id="panel-teams">
+  <div class="page-header">
+    <h2>팀 · Webhook</h2>
+    <p>알림을 받을 팀과 Webhook을 관리합니다</p>
+  </div>
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title" id="team-form-title">팀 추가</span>
+      <button class="btn-ghost btn-sm" onclick="resetTeamForm()" id="t-cancel" style="display:none">취소</button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div class="field">
+        <label>팀 이름 <span style="color:var(--text3);font-weight:400">(쉼표로 여러 팀)</span></label>
+        <input id="t-teams" placeholder="개발팀, 인프라팀" />
+      </div>
+      <div class="field">
+        <label>Webhook URL</label>
+        <input id="t-webhook" placeholder="https://hooks.slack.com/services/..." />
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:12px;align-items:end">
+        <div class="field">
+          <label>Channel ID</label>
+          <input id="t-channel" placeholder="C0123456789" />
+          <span class="hint">슬래시 커맨드 팀 감지용</span>
+        </div>
+        <div class="field">
+          <label>Dept ID</label>
+          <input id="t-dept" placeholder="0009" />
+          <span class="hint">출근알림용</span>
+        </div>
+        <button class="btn-primary" onclick="saveTeam()" style="padding:8px 24px">저장</button>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><span class="card-title">팀 목록</span></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>상태</th><th>팀</th><th>알림 타입</th><th>Webhook</th><th>Channel</th><th>Dept</th><th></th></tr></thead>
+        <tbody id="team-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- 멤버 패널 -->
+<div class="panel" id="panel-members">
+  <div class="page-header">
+    <h2>출근알림 멤버</h2>
+    <p>출근 미등록 알림을 받을 멤버를 관리합니다</p>
+  </div>
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title" id="mem-form-title">멤버 추가</span>
+      <button class="btn-ghost btn-sm" onclick="resetMemForm()" id="m-cancel" style="display:none">취소</button>
+    </div>
+    <div class="form-grid">
+      <div class="field">
+        <label>팀 선택</label>
+        <select id="f-dept" onchange="onTeamChange()"><option value="">선택</option></select>
+      </div>
+      <div class="field" style="position:relative;grid-column:span 2">
+        <label>이름 <span style="color:var(--text3);font-weight:400">(Slack 검색)</span></label>
+        <input id="f-name" placeholder="팀 선택 후 이름 검색..." autocomplete="off" oninput="onNameInput()" onfocus="onNameInput()" />
+        <div class="dropdown" id="name-dropdown"></div>
+      </div>
+      <div class="field">
+        <label>Slack User ID</label>
+        <input id="f-slack" placeholder="자동 입력" readonly style="color:var(--text2)" />
+      </div>
+      <div class="field" style="justify-content:flex-end">
+        <button class="btn-primary" onclick="saveMember()" style="width:100%">저장</button>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><span class="card-title">멤버 목록</span></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>팀</th><th>이름</th><th>Slack ID</th><th></th></tr></thead>
+        <tbody id="mem-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- 출근현황 패널 -->
+<div class="panel" id="panel-commute">
+  <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
+    <div>
+      <h2 id="commute-date">출근 현황</h2>
+      <p id="commute-summary">조회 중...</p>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn-ghost" onclick="loadCommute()">새로고침</button>
+      <button class="btn-danger" onclick="notifyAll()">미출근자 전체 알림</button>
+    </div>
+  </div>
+  <div class="commute-grid" id="commute-cards"></div>
+</div>
+
+<!-- 크론 패널 -->
+<div class="panel" id="panel-crons">
+  <div class="page-header">
+    <h2>크론 관리</h2>
+    <p>자동 알림 스케줄을 설정합니다 (cron 표현식)</p>
+  </div>
+  <div class="card">
+    <div class="card-header"><span class="card-title">스케줄 목록</span></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>상태</th><th>이름</th><th>스케줄</th><th></th></tr></thead>
+        <tbody id="cron-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- 설정 패널 -->
+<div class="panel" id="panel-settings">
+  <div class="page-header">
+    <h2>설정</h2>
+    <p>봇 토큰 등 연동 설정을 관리합니다</p>
+  </div>
+  <div class="card">
+    <div class="card-header"><span class="card-title">Slack Bot Token</span></div>
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div class="field">
+        <label>현재 토큰</label>
+        <input id="s-token-display" readonly style="color:var(--text2);font-family:var(--mono);font-size:0.83rem" placeholder="미설정" />
+      </div>
+      <div class="field">
+        <label>새 토큰 입력</label>
+        <input id="s-token-new" type="password" placeholder="xoxb-..." autocomplete="off" />
+        <span class="hint">저장 시 settings.json에 기록됩니다</span>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn-primary" onclick="saveToken()">저장</button>
+        <button class="btn-ghost" onclick="document.getElementById('s-token-new').type=document.getElementById('s-token-new').type==='password'?'text':'password'">보기/숨기기</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div><!-- end .main -->
+
+<div class="toast" id="toast"></div>
+
+<script>
+let editingTeam = null, editingMem = null;
+
+function switchTab(tab) {
+  document.querySelectorAll('.nav-item').forEach((el,i) => el.classList.toggle('active', ['teams','members','commute','crons','settings'][i] === tab));
+  document.querySelectorAll('.panel').forEach(el => el.classList.remove('active'));
+  document.getElementById('panel-' + tab).classList.add('active');
+  if (tab === 'commute') loadCommute();
+  if (tab === 'members') { refreshTeamDropdown(); loadMembers(); loadSlackUsers(); }
+  if (tab === 'crons') loadCrons();
+  if (tab === 'settings') loadSettings_ui();
+}
+
+// ===== 팀 =====
+async function loadTeams() {
+  const data = await fetch('/api/teams').then(r => r.json());
+  const tbody = document.getElementById('team-tbody');
+  const NOTIFY_TYPES = [
+    {id:'vacationChange',label:'휴가변동'},{id:'vacationWeekly',label:'이번주휴가'},
+    {id:'vacationDaily',label:'오늘휴가'},{id:'roomChange',label:'회의실변동'},
+    {id:'roomDaily',label:'오늘회의실'},{id:'commute',label:'출근알림'}
+  ];
+  tbody.innerHTML = data.length === 0
+    ? \`<tr><td colspan="7" class="empty">등록된 팀이 없습니다</td></tr>\`
+    : data.map((t, i) => {
+      const on = t.enabled !== false;
+      const badges = NOTIFY_TYPES.map(n => {
+        const active = t.notify ? t.notify[n.id] !== false : on;
+        return \`<span class="badge \${active?'badge-on':'badge-off'}" onclick="toggleNotify(\${i},'\${n.id}')">\${n.label}</span>\`;
+      }).join('');
+      return \`<tr>
+        <td>
+          <div class="toggle" onclick="toggleTeam(\${i})" style="background:\${on?'var(--primary)':'var(--border2)'}">
+            <div class="toggle-knob" style="\${on?'right:3px':'left:3px'}"></div>
+          </div>
+        </td>
+        <td>\${t.teams.map(n=>\`<span class="tag">\${n}</span>\`).join(' ')}</td>
+        <td><div style="display:flex;flex-wrap:wrap;gap:4px">\${badges}</div></td>
+        <td class="mono" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">\${t.webhook.replace('https://hooks.slack.com/services/','…/')}</td>
+        <td class="mono">\${t.channel_id||'—'}</td>
+        <td class="mono">\${t.deptId||'—'}</td>
+        <td class="actions">
+          <button class="btn-success btn-sm" onclick="testWebhook(\${i})">테스트</button>
+          <button class="btn-secondary btn-sm" onclick="editTeam(\${i})">수정</button>
+          <button class="btn-danger btn-sm" onclick="delTeam(\${i})">삭제</button>
+        </td>
+      </tr>\`;
+    }).join('');
+  refreshTeamDropdown(data);
+}
+
+async function testWebhook(i) {
+  const res = await fetch(\`/api/teams/\${i}/test\`, { method: 'POST' });
+  const j = await res.json();
+  toast(res.ok ? \`테스트 발송: \${j.sent.join(', ')||'활성 타입 없음'}\` : j.error||'발송 실패');
+}
+
+async function refreshTeamDropdown(data) {
+  if (!data) data = await fetch('/api/teams').then(r => r.json());
+  const sel = document.getElementById('f-dept');
+  if (!sel) return;
+  const curText = sel.options[sel.selectedIndex]?.text || '';
+  const opts = [], seen = new Set();
+  data.forEach(t => {
+    t.teams.forEach(name => {
+      if (seen.has(name)) return;
+      seen.add(name);
+      opts.push(\`<option value="\${t.deptId||''}">\${name}</option>\`);
+    });
+  });
+  sel.innerHTML = '<option value="">선택</option>' + opts.join('');
+  // 이전 선택 복원 - text 기준으로 selectedIndex 직접 지정
+  const restoreIdx = [...sel.options].findIndex(o => o.text === curText);
+  if (restoreIdx >= 0) sel.selectedIndex = restoreIdx;
+}
+
+async function editTeam(i) {
+  const data = await fetch('/api/teams').then(r => r.json());
+  const t = data[i]; editingTeam = i;
+  document.getElementById('t-teams').value = t.teams.join(', ');
+  document.getElementById('t-webhook').value = t.webhook;
+  document.getElementById('t-channel').value = t.channel_id || '';
+  document.getElementById('t-dept').value = t.deptId || '';
+  document.getElementById('team-form-title').textContent = '팀 수정';
+  document.getElementById('t-cancel').style.display = '';
+}
+
+function resetTeamForm() {
+  editingTeam = null;
+  ['t-teams','t-webhook','t-channel','t-dept'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('team-form-title').textContent = '팀 추가';
+  document.getElementById('t-cancel').style.display = 'none';
+}
+
+async function saveTeam() {
+  const teams = document.getElementById('t-teams').value.split(',').map(s=>s.trim()).filter(Boolean);
+  const webhook = document.getElementById('t-webhook').value.trim();
+  const channel_id = document.getElementById('t-channel').value.trim();
+  const deptId = document.getElementById('t-dept').value.trim();
+  if (!teams.length || !webhook) { toast('팀 이름과 Webhook은 필수입니다'); return; }
+  const url = editingTeam !== null ? \`/api/teams/\${editingTeam}\` : '/api/teams';
+  const method = editingTeam !== null ? 'PUT' : 'POST';
+  const res = await fetch(url, {method, headers:{'Content-Type':'application/json'}, body:JSON.stringify({teams,webhook,channel_id,deptId})});
+  if (!res.ok) { toast((await res.json()).error||'오류'); return; }
+  toast('저장되었습니다'); resetTeamForm(); loadTeams();
+}
+
+async function delTeam(i) {
+  if (!confirm('삭제할까요?')) return;
+  await fetch(\`/api/teams/\${i}\`, {method:'DELETE'});
+  toast('삭제되었습니다'); loadTeams();
+}
+
+async function toggleTeam(i) {
+  const res = await fetch(\`/api/teams/\${i}/toggle\`, {method:'PATCH'});
+  const j = await res.json();
+  toast(j.enabled ? '활성화' : '비활성화'); loadTeams();
+}
+
+async function toggleNotify(i, type) {
+  const res = await fetch(\`/api/teams/\${i}/notify/\${type}\`, {method:'PATCH'});
+  const j = await res.json();
+  toast(j.enabled ? \`\${type} 활성화\` : \`\${type} 비활성화\`); loadTeams();
+}
+
+// ===== 멤버 =====
+async function loadMembers() {
+  const data = await fetch('/api/members').then(r => r.json());
+  const tbody = document.getElementById('mem-tbody');
+  tbody.innerHTML = data.length === 0
+    ? \`<tr><td colspan="4" class="empty">등록된 멤버가 없습니다</td></tr>\`
+    : data.map((m,i) => \`<tr>
+        <td><span class="tag">\${m.teamName}</span></td>
+        <td>\${m.name}</td>
+        <td class="mono">\${m.slackId}</td>
+        <td class="actions">
+          <button class="btn-secondary btn-sm" onclick="editMem(\${i})">수정</button>
+          <button class="btn-danger btn-sm" onclick="delMem(\${i})">삭제</button>
+        </td>
+      </tr>\`).join('');
+}
+
+async function editMem(i) {
+  const data = await fetch('/api/members').then(r=>r.json());
+  const m = data[i]; editingMem = i;
+  const sel = document.getElementById('f-dept');
+  const idx = [...sel.options].findIndex(o => o.text === m.teamName);
+  if (idx >= 0) sel.selectedIndex = idx; else sel.value = m.deptId;
+  document.getElementById('f-name').value = m.name;
+  document.getElementById('f-slack').value = m.slackId;
+  document.getElementById('mem-form-title').textContent = '멤버 수정';
+  document.getElementById('m-cancel').style.display = '';
+}
+
+function resetMemForm() {
+  editingMem = null;
+  ['f-name','f-slack'].forEach(id => document.getElementById(id).value='');
+  document.getElementById('f-dept').value='';
+  document.getElementById('mem-form-title').textContent='멤버 추가';
+  document.getElementById('m-cancel').style.display='none';
+}
+
+async function saveMember() {
+  const deptEl = document.getElementById('f-dept');
+  const deptId = deptEl.value;
+  const teamName = deptEl.options[deptEl.selectedIndex]?.text || '';
+  const name = document.getElementById('f-name').value.trim();
+  const slackId = document.getElementById('f-slack').value.trim();
+  if (!deptId || !name || !slackId) { toast('모든 항목을 입력하세요'); return; }
+  const url = editingMem !== null ? \`/api/members/\${editingMem}\` : '/api/members';
+  const method = editingMem !== null ? 'PUT' : 'POST';
+  const res = await fetch(url, {method, headers:{'Content-Type':'application/json'}, body:JSON.stringify({deptId,teamName,name,slackId})});
+  if (!res.ok) { toast((await res.json()).error||'오류'); return; }
+  toast('저장되었습니다'); resetMemForm(); loadMembers();
+}
+
+async function delMem(i) {
+  if (!confirm('삭제할까요?')) return;
+  await fetch(\`/api/members/\${i}\`, {method:'DELETE'});
+  toast('삭제되었습니다'); loadMembers();
+}
+
+// ===== Slack 자동완성 =====
+let slackUsers = [];
+async function loadSlackUsers() {
+  try {
+    const data = await fetch('/api/slack/users').then(r=>r.json());
+    if (Array.isArray(data)) slackUsers = data;
+  } catch(e) {}
+}
+
+function parseSlackName(str) {
+  const lo = str.lastIndexOf('('), lc = str.lastIndexOf(')');
+  if (lo > 0 && lc === str.length-1) return {name:str.slice(0,lo).trim(), team:str.slice(lo+1,lc).trim()};
+  return {name:str.trim(), team:null};
+}
+
+function onTeamChange() {
+  document.getElementById('f-name').value='';
+  document.getElementById('f-slack').value='';
+  onNameInput();
+}
+
+function onNameInput() {
+  if (!slackUsers.length) {
+    const dd = document.getElementById('name-dropdown');
+    dd.innerHTML='<div class="dropdown-item" style="color:var(--text3)">로딩 중...</div>';
+    dd.style.display='block'; return;
+  }
+  const q = document.getElementById('f-name').value.trim().toLowerCase();
+  const dd = document.getElementById('name-dropdown');
+  const selEl = document.getElementById('f-dept');
+  const selectedTeam = selEl.selectedIndex>0 ? selEl.options[selEl.selectedIndex]?.text||'' : '';
+  const tf = selectedTeam ? slackUsers.filter(u=>parseSlackName(u.real_name||u.name).team===selectedTeam) : slackUsers;
+  const filtered = q ? tf.filter(u=>parseSlackName(u.real_name||u.name).name.toLowerCase().includes(q)).slice(0,20) : tf.slice(0,30);
+  if (!filtered.length) { dd.style.display='none'; return; }
+  dd.innerHTML = filtered.map(u => {
+    const p = parseSlackName(u.real_name||u.name);
+    const esc = s=>s.replace(/'/g,"\\\\'");
+    return \`<div class="dropdown-item" onclick="selectSlackUser('\${u.id}','\${esc(u.name)}','\${esc(u.real_name||u.name)}')">
+      <span>\${p.name}</span>
+      <span style="font-size:0.75rem;color:var(--text3)">\${p.team||''}</span>
+    </div>\`;
+  }).join('');
+  dd.style.display='block';
+}
+
+function selectSlackUser(id, name, realName) {
+  const p = parseSlackName(realName||name);
+  document.getElementById('f-name').value=p.name;
+  document.getElementById('f-slack').value=id;
+  document.getElementById('name-dropdown').style.display='none';
+  if (p.team) {
+    const sel=document.getElementById('f-dept');
+    const idx=[...sel.options].findIndex(o=>o.text===p.team);
+    if (idx>=0) sel.selectedIndex=idx;
+  }
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('#f-name')&&!e.target.closest('#name-dropdown')&&!e.target.closest('#f-dept'))
+    document.getElementById('name-dropdown').style.display='none';
+});
+
+// ===== 출근현황 =====
+async function loadCommute() {
+  document.getElementById('commute-cards').innerHTML='<div style="color:var(--text3);padding:20px">조회 중...</div>';
+  document.getElementById('commute-summary').textContent='';
+  const data = await fetch('/api/commute/status').then(r=>r.json());
+  document.getElementById('commute-date').textContent=\`\${data.date} 출근 현황\`;
+  const checked=data.members.filter(m=>m.checkedIn).length;
+  document.getElementById('commute-summary').textContent=\`출근 \${checked}명 / 전체 \${data.members.length}명\`;
+  document.getElementById('commute-cards').innerHTML = data.members.length===0
+    ? '<div style="color:var(--text3);padding:20px">등록된 멤버가 없습니다</div>'
+    : data.members.map(m => \`
+      <div class="commute-card" style="border:1px solid \${m.checkedIn?'#14532d':'#7f1d1d'}">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-weight:600;font-size:0.95rem">\${m.name}</span>
+          <span style="font-size:0.72rem;padding:2px 8px;border-radius:6px;background:\${m.checkedIn?'var(--green-bg)':'var(--red-bg)'};color:\${m.checkedIn?'#4ade80':'#f87171'};font-weight:500">\${m.checkedIn?'출근':'미출근'}</span>
+        </div>
+        <div style="font-size:0.78rem;color:var(--text3)">\${m.teamName}\${m.workStartTime?' · '+m.workStartTime:''}</div>
+        <div style="display:flex;gap:6px;justify-content:flex-end">
+          \${!m.checkedIn?\`<button class="btn-danger btn-sm" onclick="notifyOne(\${m.index},'\${m.name}',false)">알림</button>\`:''}
+          <button class="btn-ghost btn-sm" onclick="notifyOne(\${m.index},'\${m.name}',true)">테스트</button>
+        </div>
+      </div>\`).join('');
+}
+
+async function notifyOne(index, name, force=false) {
+  if (!confirm(force?\`\${name}님에게 테스트 알림?\`:\`\${name}님에게 출근 알림?\`)) return;
+  const res=await fetch('/api/commute/notify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({indices:[index],force})});
+  const j=await res.json();
+  toast(res.ok?\`\${name}님 알림 발송 완료\`:j.error||'오류');
+}
+
+async function notifyAll() {
+  if (!confirm('미출근자 전체에게 알림을 보낼까요?')) return;
+  const res=await fetch('/api/commute/notify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
+  const j=await res.json();
+  toast(res.ok?\`발송 완료: \${j.sent.join(', ')||'대상 없음'}\`:j.error||'오류');
+}
+
+// ===== 크론 =====
+async function loadCrons() {
+  const data = await fetch('/api/crons').then(r=>r.json());
+  document.getElementById('cron-tbody').innerHTML = data.map(c=>\`<tr>
+    <td>
+      <div class="toggle" onclick="toggleCron('\${c.id}',\${!c.enabled})" style="background:\${c.enabled?'var(--primary)':'var(--border2)'}">
+        <div class="toggle-knob" style="\${c.enabled?'right:3px':'left:3px'}"></div>
+      </div>
+    </td>
+    <td style="opacity:\${c.enabled?1:0.5}">\${c.label}</td>
+    <td><input id="sch-\${c.id}" value="\${c.schedule}" style="font-family:var(--mono);width:180px;font-size:0.83rem" /></td>
+    <td class="actions"><button class="btn-secondary btn-sm" onclick="saveCron('\${c.id}')">저장</button></td>
+  </tr>\`).join('');
+}
+
+async function toggleCron(id, enabled) {
+  await fetch(\`/api/crons/\${id}\`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled})});
+  toast(enabled?'크론 활성화':'크론 비활성화'); loadCrons();
+}
+
+async function saveCron(id) {
+  const schedule=document.getElementById(\`sch-\${id}\`).value.trim();
+  const res=await fetch(\`/api/crons/\${id}\`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({schedule})});
+  toast(res.ok?'저장 완료':'저장 실패'); loadCrons();
+}
+
+// ===== 공통 =====
+function toast(msg) {
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.style.display='block';
+  setTimeout(()=>el.style.display='none', 2500);
+}
+
+// ===== 설정 =====
+async function loadSettings_ui() {
+  const data = await fetch('/api/settings').then(r=>r.json());
+  document.getElementById('s-token-display').value = data.slackBotToken || '미설정';
+}
+
+async function saveToken() {
+  const val = document.getElementById('s-token-new').value.trim();
+  if (!val) { toast('토큰을 입력하세요'); return; }
+  const res = await fetch('/api/settings', {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({slackBotToken:val})});
+  if (res.ok) { toast('저장 완료'); document.getElementById('s-token-new').value=''; loadSettings_ui(); }
+  else { const j=await res.json(); toast(j.error||'오류'); }
+}
+
+function toggleTheme() {
+  const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+  document.documentElement.setAttribute('data-theme', isDark ? 'light' : 'dark');
+  document.getElementById('theme-icon').textContent = isDark ? '🌙' : '☀️';
+  document.getElementById('theme-label').textContent = isDark ? '다크 모드' : '라이트 모드';
+  localStorage.setItem('theme', isDark ? 'light' : 'dark');
+}
+(function(){
+  const t = localStorage.getItem('theme');
+  if (t === 'light') {
+    document.documentElement.setAttribute('data-theme','light');
+    document.getElementById('theme-icon').textContent='🌙';
+    document.getElementById('theme-label').textContent='다크 모드';
+  }
+})();
+
+loadTeams(); loadMembers(); loadSlackUsers();
+</script>
+</body>
+</html>`);
+});
+
+// ========== 슬래시 커맨드 ==========
+app.post("/slack/command", async (req, res) => {
+  logger(`>>> [커맨드 요청 발생]`);
+  logger(`[요청 바디] ${JSON.stringify(req.body)}`);
+
+  const { command, text, response_url, channel_id, user_id } = req.body;
+  logger(`[해석] ${command} ${text} (채널: ${channel_id}, 사용자: ${user_id})`);
+
+  const keyword = text?.trim().toLowerCase() ?? "";
+  if (keyword === "업데이트" || keyword === "갱신" || keyword === "refresh") {
+    res.json({ response_type: "ephemeral", text: "실시간 동기화를 시작합니다..." });
+    const success = await syncAndCheckChanges(true);
+    if (response_url) await axios.post(response_url, { response_type: "ephemeral", text: success ? "최신 데이터로 동기화되었습니다!" : "동기화에 실패했습니다." });
+    return;
+  }
+  const normalizeDate = (d) => /^\d{8}$/.test(d) ? `${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6,8)}` : d;
+  let sdate, edate, isRange = false;
+  if (keyword === "" || keyword === "오늘") { sdate = edate = getToday(); }
+  else if (keyword === "내일") { 
+    const d = new Date(); d.setDate(d.getDate() + 1); sdate = edate = formatDate(d);
+  } else if (keyword === "이번주") {
+    const dates = (()=>{ const d = new Date(); const mon = new Date(d); mon.setDate(d.getDate() - d.getDay() + 1); return Array.from({length:5},(_,i)=>{ const nd = new Date(mon); nd.setDate(mon.getDate()+i); return formatDate(nd); }); })();
+    sdate = dates[0]; edate = dates[4]; isRange = true;
+  } else if (keyword === "다음주") {
+    const dates = (()=>{ const d = new Date(); const mon = new Date(d); mon.setDate(d.getDate() - d.getDay() + 8); return Array.from({length:5},(_,i)=>{ const nd = new Date(mon); nd.setDate(mon.getDate()+i); return formatDate(nd); }); })();
+    sdate = dates[0]; edate = dates[4]; isRange = true;
+  } else {
+    const raw = keyword.replace(/[\[\]()]/g, "").replace(/\//g, "-").replace(/\./g, "-").replace(/\s+/g, "").trim();
+    const rangeDate = /^(\d{4}-\d{2}-\d{2})[~](\d{4}-\d{2}-\d{2})$/;
+    if (rangeDate.test(raw)) { const [, s, e] = raw.match(rangeDate); sdate = normalizeDate(s); edate = normalizeDate(e); isRange = true; }
+    else if (/^\d{4}-\d{2}-\d{2}$/.test(normalizeDate(raw))) { sdate = edate = normalizeDate(raw); }
+    else {
+      return res.json({
+        response_type: "ephemeral",
+        text: [
+          "입력 형식이 올바르지 않습니다.",
+          "",
+          "*키워드*",
+          `${command} 오늘 / 내일 / 이번주 / 다음주`,
+          `${command} 업데이트 (최신 데이터 강제 동기화)`,
+          "",
+          "*날짜 직접 입력*",
+          `${command} 2026-03-25`,
+          `${command} 2026-03-23~2026-03-27`,
+          "",
+          "*지원 형식*",
+          "2026-03-25 / 2026.03.25 / 2026/03/25 / [2026-03-25]",
+        ].join("\n"),
+      });
+    }
+  }
+  res.json({ response_type: "ephemeral", text: "조회 중..." });
+  try {
+    let message;
+    if (command === "/휴가") {
+      const list = await fetchVacations(sdate, edate, true);
+      const matchedTeam = teamsData.find(t => t.channel_id === channel_id);
+      const titleDate = isRange ? `${sdate}~${edate}` : sdate;
+      if (matchedTeam) {
+        message = buildVacationMessage(sdate, list.filter(i => matchedTeam.teams.includes(i.deptName)), `${titleDate} 휴가자`, isRange);
+      } else {
+        const uTeam = await getSlackUserTeam(user_id);
+        const mTeam = uTeam ? teamsData.find(t => t.teams.includes(uTeam)) : null;
+        if (mTeam) message = buildVacationMessage(sdate, list.filter(i => mTeam.teams.includes(i.deptName)), `${titleDate} 휴가자`, isRange);
+        else message = buildVacationMessage(sdate, list.filter(i => teamsData.some(t => t.teams.includes(i.deptName))), `${titleDate} 전체 휴가자`, isRange, teamsData);
+      }
+    } else if (command === "/회의실") {
+      const list = await fetchRooms(sdate, edate, true);
+      message = buildRoomMessage(sdate, list, edate);
+    }
+    if (message && response_url) await axios.post(response_url, { ...message, response_type: "ephemeral", replace_original: false });
+  } catch (err) { logger(`[커맨드 오류] ${err.message}`, true); }
+});
+
+// 스케줄
+// 크론은 init()에서 initCrons()로 초기화
+
+async function runTest() {
+  logger(`===== 테스트 모드 시작 =====`);
+  loadTeams(); loadMembers(); await loginAll();
+
+  if (!teamsData.length) { logger("teamsData 설정 없음", true); process.exit(1); }
+
+  const today = getToday();
+  const thisWeekDates = (()=>{ const d = new Date(); const mon = new Date(d); mon.setDate(d.getDate() - d.getDay() + 1); return Array.from({length:5},(_,i)=>{ const nd = new Date(mon); nd.setDate(mon.getDate()+i); return formatDate(nd); }); })();
+  const nextWeekDates = (()=>{ const d = new Date(); const mon = new Date(d); mon.setDate(d.getDate() - d.getDay() + 8); return Array.from({length:5},(_,i)=>{ const nd = new Date(mon); nd.setDate(mon.getDate()+i); return formatDate(nd); }); })();
+
+  const [vToday, vThisWeek, vNextWeek, rToday] = await Promise.all([
+    fetchVacations(today, today, false),
+    fetchVacations(thisWeekDates[0], thisWeekDates[4], false),
+    fetchVacations(nextWeekDates[0], nextWeekDates[4], false),
+    fetchRooms(today, today, false),
+  ]);
+
+  for (const target of teamsData) {
+    logger(`\n----- ${target.teams.join(", ")} 발송 시작 -----`);
+    const tests = [
+      { label: "오늘 휴가자",   msg: buildVacationMessage(today, vToday.filter(i => target.teams.includes(i.deptName))) },
+      { label: "이번주 휴가자", msg: buildVacationMessage(thisWeekDates[0], vThisWeek.filter(i => target.teams.includes(i.deptName)), `${thisWeekDates[0]}~${thisWeekDates[4]} 휴가자`, true) },
+      { label: "다음주 휴가자", msg: buildVacationMessage(nextWeekDates[0], vNextWeek.filter(i => target.teams.includes(i.deptName)), `${nextWeekDates[0]}~${nextWeekDates[4]} 휴가자`, true) },
+      { label: "오늘 회의실",   msg: buildRoomMessage(today, rToday) },
+    ];
+    for (const { label, msg } of tests) {
+      try {
+        logger(`[테스트] ${label} 발송 중...`);
+        await axios.post(target.webhook, { ...msg, text: `[테스트] ${label}` });
+        logger(`[테스트] ${label} 발송 완료`);
+      } catch (err) { logger(`[테스트] ${label} 실패: ${err.message}`, true); }
+    }
+  }
+
+  // 변동 감지 테스트: 스냅샷 초기화 후 sync → 현재 데이터가 전부 "추가"로 감지됨
+  logger(`\n----- 변동 감지 테스트 -----`);
+  prevRoomSnapshot = { map: {}, sdate: today, edate: today, updatedAt: new Date().toISOString() };
+  prevVacationSnapshot = { map: Object.fromEntries(vToday.map(i => { const k = `${i.usName}_${i.deptName}_${i.timeUnitName}_${i.useTimeType ?? ""}_${i.useSdate ?? ""}`; return [k, i]; })), sdate: today, edate: today, updatedAt: new Date().toISOString() };
+  cache.vacation = {};
+  cache.room = {};
+  await syncAndCheckChanges(true);
+
+  logger(`===== 테스트 모드 종료 =====`);
+  process.exit(0);
+}
+
+async function init() {
+  logger(`서버 초기화 중...`); loadSnapshot(); loadSettings(); loadTeams(); loadMembers(); await loginAll();
+  const isOld = !prevVacationSnapshot.updatedAt || (Date.now() - new Date(prevVacationSnapshot.updatedAt).getTime() > 10 * 60 * 1000);
+  if (isOld) await syncAndCheckChanges(); else logger(`최신 스냅샷(10분 이내)이 존재하여 초기 동기화를 건너뜁니다.`);
+  initCrons();
+  app.listen(PORT, () => logger(`서버 실행 중 (Port: ${PORT})`));
+}
+
+if (process.argv.includes("--test")) {
+  runTest().catch(err => { logger(`테스트 실패: ${err.message}`, true); process.exit(1); });
+} else {
+  init().catch(err => { logger(`초기화 실패: ${err.message}`, true); process.exit(1); });
+}

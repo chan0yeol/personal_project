@@ -1,0 +1,56 @@
+spring:
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID}
+            client-secret: ${GOOGLE_CLIENT_SECRET}
+            scope: email, profile
+            # Google Cloud Console에 등록한 redirect URI와 일치해야 함
+            redirect-uri: ${OAUTH_REDIRECT_URI:http://localhost:8080/login/oauth2/code/google}
+  datasource:
+    url: jdbc:mysql://db:3306/clawmap?useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=UTF-8
+    username: ${DB_USERNAME:clawmap}
+    password: ${DB_PASSWORD:clawmap}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect
+        format_sql: true
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 50MB
+
+kakao:
+  local:
+    api-key: ${KAKAO_API_KEY}
+
+naver:
+  search:
+    client-id: ${NAVER_CLIENT_ID}
+    client-secret: ${NAVER_CLIENT_SECRET}
+
+server:
+  port: 8080
+
+# 로컬 기본값 ./uploads, Docker에서는 UPLOAD_DIR 환경변수로 오버라이드
+upload:
+  dir: ${UPLOAD_DIR:./uploads}
+
+# JWT 설정
+jwt:
+  # 최소 32바이트 이상의 Base64 인코딩 문자열 필요
+  secret: ${JWT_SECRET}
+  access-expiry: 900000      # 15분 (ms)
+  refresh-expiry: 604800000  # 7일 (ms)
+
+# 프론트엔드 URL - OAuth 로그인 후 리다이렉트 대상
+app:
+  frontend-url: ${FRONTEND_URL:http://localhost:5173}
+

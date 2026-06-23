@@ -1,0 +1,13 @@
+services:
+  slack-bot:
+    build: .
+    container_name: slack-bot
+    ports:
+      - "3001:3000"
+    environment:
+      - TZ=Asia/Seoul
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

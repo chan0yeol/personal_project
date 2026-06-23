@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "UniSupport 검색 조건 extension",
+  "version": "1.0.0",
+  "description": "시작일/처리자/팀 설정 후 자동 조회",
+  "content_scripts": [
+    {
+      "matches": ["https://114.unipost.co.kr/*"],
+      "js": ["content.js"],
+      "css": ["style.css"],
+      "run_at": "document_idle",
+      "world": "MAIN"
+    }
+  ]
+}

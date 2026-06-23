@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "UniSupport Extension",
+  "version": "1.0.4",
+  "description": "검색 조건 자동설정 + 반영일정 Slack 알림",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://114.unipost.co.kr/*",
+    "http://192.168.10.54:3001/*",
+    "http://192.168.10.54:8000/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://114.unipost.co.kr/*"],
+      "js": ["relay.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://114.unipost.co.kr/*"],
+      "js": ["content-search.js", "content-notify.js", "fab.js"],
+      "css": ["style.css"],
+      "run_at": "document_idle",
+      "world": "MAIN"
+    }
+  ]
+}

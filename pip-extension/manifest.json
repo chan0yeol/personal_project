@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "PiP Overlay",
+  "version": "1.0",
+  "description": "반투명 플로팅 미니 브라우저 오버레이",
+  "permissions": [
+    "declarativeNetRequest",
+    "declarativeNetRequestWithHostAccess",
+    "activeTab",
+    "tabs",
+    "scripting",
+    "commands"
+  ],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "PiP Overlay"
+  },
+  "commands": {
+    "toggle-overlay": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+F"
+      },
+      "description": "오버레이 표시/숨김 토글"
+    }
+  }
+}

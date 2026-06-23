@@ -1,0 +1,17 @@
+services:
+  uni-rag:
+    build: .
+    ports:
+      - "${PORT:-3100}:3100"
+    volumes:
+      - "D:/99.project/unidocu6-core:/projects/unidocu6-core:ro"
+      - "D:/99.project/unidocu6:/projects/unidocu6:ro"
+    environment:
+      - PORT=3100
+      - DATABASE_URL=${DATABASE_URL}
+      - OLLAMA_URL=http://host.docker.internal:11434
+      - EMBED_MODEL=${EMBED_MODEL:-mxbai-embed-large}
+      - SOURCE_PATH=${SOURCE_PATH}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped

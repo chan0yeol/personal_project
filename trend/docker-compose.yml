@@ -1,0 +1,136 @@
+version: '3.9'
+
+services:
+  # ─── Infrastructure ──────────────────────────────────────────────────────────
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: trend-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: trenddb
+      POSTGRES_USER: trend
+      POSTGRES_PASSWORD: trend1234
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - trend-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trend -d trenddb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: trend-redis
+    restart: unless-stopped
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    networks:
+      - trend-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # ─── Application Services ─────────────────────────────────────────────────
+
+  scraper:
+    build:
+      context: ./scraper
+      dockerfile: Dockerfile
+    container_name: trend-scraper
+    restart: unless-stopped
+    environment:
+      NAVER_CLIENT_ID: ${NAVER_CLIENT_ID:-}
+      NAVER_CLIENT_SECRET: ${NAVER_CLIENT_SECRET:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_MODEL: ${GROQ_MODEL:-llama-3.3-70b-versatile}
+      WP_URL: ${WP_URL:-}
+      WP_USER: ${WP_USER:-}
+      WP_APP_PASSWORD: ${WP_APP_PASSWORD:-}
+    ports:
+      - "8000:8000"
+    networks:
+      - trend-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: trend-backend
+    restart: unless-stopped
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: trenddb
+      DB_USER: trend
+      DB_PASSWORD: trend1234
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      SCRAPER_URL: http://scraper:8000
+      NAVER_CLIENT_ID: ${NAVER_CLIENT_ID:-}
+      NAVER_CLIENT_SECRET: ${NAVER_CLIENT_SECRET:-}
+      FRONTEND_URL: http://localhost
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      scraper:
+        condition: service_healthy
+    networks:
+      - trend-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ""
+    container_name: trend-frontend
+    restart: unless-stopped
+    environment:
+      BACKEND_URL: http://backend:8080
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - trend-net
+
+  nginx:
+    image: nginx:alpine
+    container_name: trend-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - trend-net
+
+networks:
+  trend-net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:

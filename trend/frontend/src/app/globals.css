@@ -1,0 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --chart-1: #6366f1;
+    --chart-2: #22d3ee;
+    --chart-3: #f59e0b;
+    --chart-4: #10b981;
+    --chart-5: #f43f5e;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-gray-900 border border-gray-800 rounded-xl p-5;
+  }
+  .badge-up {
+    @apply text-emerald-400 text-xs font-semibold;
+  }
+  .badge-down {
+    @apply text-rose-400 text-xs font-semibold;
+  }
+}

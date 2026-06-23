@@ -1,0 +1,20 @@
+{
+  "mode": "draft",
+  "keyword_mode": "auto",
+  "schedule_time": "09:00",
+  "images": {
+    "featured": 1,
+    "body": 3
+  },
+  "seo": {
+    "min_chars": 7000
+  },
+  "wordpress": {
+    "url": "http://100.109.108.36:8081",
+    "user": "chanyeol",
+    "app_password": "npzM bKme Cgwm BsdL 741z 489Q"
+  },
+  "pixabay": {
+    "api_key": "55327116-b6963a5974d3d14240e40a71e"
+  }
+}

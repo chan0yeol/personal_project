@@ -1,0 +1,7 @@
+services:
+  service-dashboard:
+    build: .
+    container_name: service-dashboard
+    ports:
+      - "8080:8080"
+    restart: unless-stopped

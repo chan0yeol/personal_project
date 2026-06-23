@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "반영일정 알림",
+  "version": "1.0.0",
+  "description": "사내 시스템에서 반영일정을 등록하고 Slack으로 알림을 받습니다",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://114.unipost.co.kr/*",
+    "http://localhost:3001/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://114.unipost.co.kr/*"],
+      "js": ["content.js"],
+      "css": ["modal.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}

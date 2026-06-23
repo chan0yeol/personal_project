@@ -1,0 +1,222 @@
+/* 사이트 CSS 격리 */
+#dsh-overlay * {
+  box-sizing: border-box !important;
+  font-family: 'Pretendard', 'Segoe UI', system-ui, sans-serif !important;
+  font-size: 13px !important;
+  line-height: normal !important;
+}
+
+/* 오버레이 */
+#dsh-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  z-index: 999999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 모달 */
+#dsh-modal {
+  background: #fff;
+  border-radius: 12px;
+  padding: 24px 28px;
+  width: 360px;
+  max-width: 95vw;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+  font-family: 'Pretendard', 'Segoe UI', system-ui, sans-serif;
+}
+
+#dsh-modal h2 {
+  font-size: 15px !important;
+  font-weight: 700 !important;
+  color: #1e293b !important;
+  margin: 0 0 18px !important;
+}
+
+/* 필드 */
+.dsh-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.dsh-field > label, .dsh-field > span {
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.dsh-field input[type="text"] {
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  font-size: 13px;
+  color: #1e293b;
+  background: #f8fafc;
+  width: 100%;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+.dsh-field input[type="text"]:focus {
+  outline: none;
+  border-color: #5865f2;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(88,101,242,0.1);
+}
+
+/* 라디오 그룹 */
+.dsh-radio-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.dsh-radio-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 20px;
+  font-size: 12px;
+  color: #334155;
+  cursor: pointer;
+  transition: all 0.15s;
+  user-select: none;
+}
+.dsh-radio-label:hover { border-color: #5865f2; color: #5865f2; }
+.dsh-radio-label input[type="radio"] { display: none; }
+.dsh-radio-label:has(input:checked) {
+  background: #5865f2;
+  border-color: #5865f2;
+  color: #fff;
+  font-weight: 600;
+}
+
+/* 체크박스 그룹 */
+.dsh-check-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.dsh-check-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 20px;
+  font-size: 12px;
+  color: #334155;
+  cursor: pointer;
+  transition: all 0.15s;
+  user-select: none;
+}
+.dsh-check-label:hover { border-color: #5865f2; color: #5865f2; }
+.dsh-check-label input[type="checkbox"] { display: none; }
+.dsh-check-label:has(input:checked) {
+  background: #5865f2;
+  border-color: #5865f2;
+  color: #fff;
+  font-weight: 600;
+}
+
+/* 토글 행 */
+.dsh-toggle-row {
+  flex-direction: row !important;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-top: 1px solid #f1f5f9;
+  margin-top: 4px;
+}
+
+/* 토글 스위치 */
+.dsh-toggle {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 20px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.dsh-toggle input { display: none; }
+.dsh-toggle-slider {
+  position: absolute;
+  inset: 0;
+  background: #cbd5e1;
+  border-radius: 20px;
+  transition: background 0.2s;
+}
+.dsh-toggle-slider::before {
+  content: '';
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  border-radius: 50%;
+  top: 3px;
+  left: 3px;
+  transition: transform 0.2s;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+.dsh-toggle input:checked + .dsh-toggle-slider { background: #5865f2; }
+.dsh-toggle input:checked + .dsh-toggle-slider::before { transform: translateX(16px); }
+
+/* 액션 버튼 */
+#dsh-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+#dsh-actions button {
+  all: revert;
+  box-sizing: border-box !important;
+  display: inline-block !important;
+  padding: 7px 14px !important;
+  border-radius: 7px !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
+  cursor: pointer !important;
+  margin: 0 !important;
+  outline: none !important;
+  text-decoration: none !important;
+  vertical-align: middle !important;
+  width: auto !important;
+  height: auto !important;
+  overflow: visible !important;
+}
+
+#dsh-cancel {
+  background: #f1f5f9 !important;
+  color: #64748b !important;
+  border: 1px solid #e2e8f0 !important;
+}
+#dsh-cancel:hover { background: #e2e8f0 !important; }
+
+#dsh-save {
+  background: #fff !important;
+  color: #5865f2 !important;
+  border: 1px solid #5865f2 !important;
+  font-weight: 600 !important;
+}
+#dsh-save:hover { background: #eef0fd !important; }
+
+#dsh-apply {
+  background: #5865f2 !important;
+  color: #fff !important;
+  border: none !important;
+  font-weight: 600 !important;
+  padding: 7px 16px !important;
+}
+#dsh-apply:hover { background: #3d4bc4 !important; }

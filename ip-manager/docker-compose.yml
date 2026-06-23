@@ -1,0 +1,21 @@
+services:
+  json-server:
+    image: node:18-alpine
+    working_dir: /data
+    command: sh -c "npm install -g json-server@0.17.4 && json-server --watch /data/db.json --port 18281 --host 0.0.0.0"
+    volumes:
+      - ./:/data
+    ports:
+      - "18281:18281"
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "18282:8282"
+    volumes:
+      - ./html:/usr/share/nginx/html:ro
+      - ./nginx.docker.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - json-server
+    restart: unless-stopped
