@@ -488,8 +488,11 @@
             const delB  = el('button', { all:'revert', padding:'2px 7px', background:'transparent', color:'#ef4444', border:'1px solid #fca5a5', borderRadius:'4px', fontSize:'11px', cursor:'pointer' }, '삭제');
             delB.addEventListener('click', async () => {
               if (!confirm('삭제하시겠습니까?')) return;
-              await relayFetch(`${API_BASE}/api/deploy-schedules/${r.id}`, { method:'DELETE' });
-              fetchSchedules();
+              try {
+                const res = await relayFetch(`${API_BASE}/api/deploy-schedules/${r.id}?requester=${encodeURIComponent(currentUser)}`, { method:'DELETE' });
+                if (!res.ok) { const d = await res.json(); alert(d.error || '삭제에 실패했습니다.'); return; }
+                fetchSchedules();
+              } catch (e) { alert(`오류: ${e.message}`); }
             });
             actionCell.appendChild(editB); actionCell.appendChild(delB);
           }
@@ -1155,6 +1158,7 @@
   // ─── 수정 오버레이 ────────────────────────────────────────
   function openEditOverlay(r, onSaved) {
     if (document.getElementById('dne-overlay')) return;
+    const currentUser = document.querySelector('.userNm')?.title?.trim() || '';
     const d = new Date(r.deploy_at);
     const dateVal = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
     const timeVal = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
@@ -1224,12 +1228,16 @@
     const saveB = btnPrimary('저장', async () => {
       const dd = dateInp.value, dt = timeInp.value;
       if (!dd || !dt || !titleInp.value.trim()) return;
-      await relayFetch(`${API_BASE}/api/deploy-schedules/${r.id}`, {
-        method:'PUT', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ deploy_at:`${dd}T${dt}:00+09:00`, ticket_no:ticketInp.value||null,
-          hub_name:hubInp.value||null, title:titleInp.value.trim(), notify_times:editNotifyTimes }),
-      });
-      overlay.remove(); onSaved?.();
+      try {
+        const res = await relayFetch(`${API_BASE}/api/deploy-schedules/${r.id}`, {
+          method:'PUT', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ deploy_at:`${dd}T${dt}:00+09:00`, ticket_no:ticketInp.value||null,
+            hub_name:hubInp.value||null, title:titleInp.value.trim(), notify_times:editNotifyTimes,
+            requester:currentUser }),
+        });
+        if (!res.ok) { const d = await res.json(); alert(d.error || '수정에 실패했습니다.'); return; }
+        overlay.remove(); onSaved?.();
+      } catch (e) { alert(`오류: ${e.message}`); }
     });
     footer.appendChild(saveB);
     body.appendChild(footer);

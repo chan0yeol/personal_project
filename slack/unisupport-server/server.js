@@ -109,26 +109,39 @@ app.post('/api/deploy-schedule', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// 반영일정 수정
+// 반영일정 수정 (등록자 본인만 — registrant_name 또는 create_name 일치 시)
 app.put('/api/deploy-schedules/:id', async (req, res) => {
   const { id } = req.params;
-  const { deploy_at, ticket_no, title, hub_name, notify_times } = req.body;
+  const { deploy_at, ticket_no, title, hub_name, notify_times, requester } = req.body;
   if (!deploy_at || !title) return res.status(400).json({ error: '필드 누락' });
+  if (!requester)           return res.status(400).json({ error: '요청자 정보 누락' });
   const fields = ['deploy_at=$1', 'ticket_no=$2', 'title=$3', 'hub_name=$4', 'notified_times=\'{}\''];
   const vals   = [deploy_at, ticket_no || null, title, hub_name || null];
   if (Array.isArray(notify_times)) { fields.push(`notify_times=$${vals.length + 1}`); vals.push(notify_times.map(Number)); }
-  vals.push(id);
+  vals.push(id);       const idIdx  = vals.length;
+  vals.push(requester); const reqIdx = vals.length;
   try {
-    await db.query(`UPDATE deploy_schedules SET ${fields.join(', ')} WHERE id=$${vals.length}`, vals);
+    const result = await db.query(
+      `UPDATE deploy_schedules SET ${fields.join(', ')}
+       WHERE id=$${idIdx} AND (registrant_name=$${reqIdx} OR create_name=$${reqIdx})`,
+      vals
+    );
+    if (result.rowCount === 0) return res.status(403).json({ error: '본인이 등록한 일정만 수정할 수 있습니다.' });
     res.json({ ok: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// 반영일정 삭제
+// 반영일정 삭제 (등록자 본인만 — registrant_name 또는 create_name 일치 시)
 app.delete('/api/deploy-schedules/:id', async (req, res) => {
   const { id } = req.params;
+  const requester = req.query.requester;
+  if (!requester) return res.status(400).json({ error: '요청자 정보 누락' });
   try {
-    await db.query('DELETE FROM deploy_schedules WHERE id=$1', [id]);
+    const result = await db.query(
+      'DELETE FROM deploy_schedules WHERE id=$1 AND (registrant_name=$2 OR create_name=$2)',
+      [id, requester]
+    );
+    if (result.rowCount === 0) return res.status(403).json({ error: '본인이 등록한 일정만 삭제할 수 있습니다.' });
     res.json({ ok: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
