@@ -571,16 +571,7 @@
     dtRow.appendChild(dateInp); dtRow.appendChild(timeInp);
     body.appendChild(fld('반영일시', dtRow));
 
-    // 메인 doc + 전체 iframe 탐색
-    function findInPage(selector) {
-      const m = document.querySelector(selector);
-      if (m) return m;
-      for (const f of document.querySelectorAll('iframe')) {
-        try { const r = f.contentDocument?.querySelector(selector); if (r) return r; } catch(_) {}
-      }
-      return null;
-    }
-
+    // findInPage(메인 doc + iframe 탐색)는 content-search.js에서 전역 정의됨
     const hubInp    = inp('text', '고객사명', findInPage('#HUB_NAME')?.value?.trim() || '');
     const ticketInp = inp('text', '접수번호', (() => {
       const t = findInPage('#TITLE_BAR .up-title-text')?.textContent?.trim() || '';
@@ -1440,17 +1431,8 @@
 
   // ─── AI 유사사례 패널 ──────────────────────────────────────
   function renderAIPanel() {
-    const AI_BASE = 'http://192.168.10.54:8000';
+    // AI_BASE는 config.js, findInPage는 content-search.js에서 전역으로 정의됩니다.
     const { panel, body } = createPanel('AI 유사사례', '현재 문의와 유사한 과거 처리 사례를 검색합니다', 520);
-
-    function findInPage(selector) {
-      const m = document.querySelector(selector);
-      if (m) return m;
-      for (const f of document.querySelectorAll('iframe')) {
-        try { const r = f.contentDocument?.querySelector(selector); if (r) return r; } catch (_) {}
-      }
-      return null;
-    }
 
     // 현재 페이지에서 문의 제목 + 내용 자동 추출 (HTML 태그 제거)
     const autoQuery = (() => {
@@ -1512,6 +1494,7 @@
     const colOptions = [
       { key: 'support_cases_hyde',     label: '문의' },
       { key: 'support_answers_hybrid', label: '처리내역' },
+      { key: 'support_full',           label: '전체유형' },
     ];
     colOptions.forEach(({ key, label }) => {
       const btn = document.createElement('button');
@@ -1551,7 +1534,7 @@
 
     async function sendFeedback(caseId, positive) {
       try {
-        await fetch(`${API}/feedback`, {
+        await relayFetch(`${AI_BASE}/feedback`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ case_id: caseId, positive, query: lastRawQuery, refined_query: lastRefinedQuery }),
         });

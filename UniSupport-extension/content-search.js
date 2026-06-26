@@ -87,6 +87,16 @@ function getTargetDoc() {
   return getTargetContext()?.doc || null;
 }
 
+// 메인 document + 모든 iframe에서 selector에 맞는 첫 요소 반환 (없으면 null)
+function findInPage(selector) {
+  const m = document.querySelector(selector);
+  if (m) return m;
+  for (const f of document.querySelectorAll('iframe')) {
+    try { const r = f.contentDocument?.querySelector(selector); if (r) return r; } catch (_) {}
+  }
+  return null;
+}
+
 // ─── DOM 요소 대기 (폴링) ────────────────────────────────
 function waitForElement(selector, callback, timeout = 15000) {
   let elapsed = 0;
@@ -216,7 +226,7 @@ function afterGridLoad(callback, timeout = 8000) {
 }
 
 
-// ─── 검색 설정 모달 ──────────────────────────────────────
+// ─── 검색 옵션 (fab.js 설정 패널에서 참조) ───────────────
 const RANGE_OPTIONS = [
   { value: '10',  label: '10일 전' },
   { value: '30',  label: '한달' },
@@ -225,170 +235,6 @@ const RANGE_OPTIONS = [
   { value: '360', label: '360일' },
 ];
 
-function openSearchModal() {
-  if (document.getElementById('dsh-overlay')) return;
-
-  const savedProcesser   = getCookie(COOKIE_PROCESSER) || document.querySelector('.userNm')?.title?.trim() || '';
-  const savedDays        = getCookie(COOKIE_DAYS) || '10';
-  const savedAuto        = getCookie(COOKIE_AUTO) === 'true';
-  const savedTeams       = JSON.parse(getCookie(COOKIE_TEAMS) || '[]');
-  const savedProgression = JSON.parse(getCookie(COOKIE_PROGRESSION) || JSON.stringify(DEFAULT_PROGRESSION));
-  const savedSortCol     = getCookie(COOKIE_SORT_COL) || 'status';
-  const savedSortDir     = getCookie(COOKIE_SORT_DIR) || 'desc';
-  const savedDateType    = getCookie(COOKIE_DATE_TYPE) || 'R';
-
-  const radioHTML = RANGE_OPTIONS.map(opt => `
-    <label class="dsh-radio-label">
-      <input type="radio" name="dsh-days" value="${opt.value}" ${savedDays === opt.value ? 'checked' : ''} />
-      ${opt.label}
-    </label>
-  `).join('');
-
-  const overlay = document.createElement('div');
-  overlay.id = 'dsh-overlay';
-  overlay.innerHTML = `
-    <div id="dsh-modal">
-      <h2>검색 설정</h2>
-
-      <div class="dsh-field">
-        <label>처리자</label>
-        <input type="text" id="dsh-processer" value="${savedProcesser}" placeholder="처리자 이름 입력" />
-      </div>
-
-      <div class="dsh-field">
-        <label>날짜 기준</label>
-        <div class="dsh-radio-group">
-          ${DATE_TYPE_OPTIONS.map(opt => `
-            <label class="dsh-radio-label">
-              <input type="radio" name="dsh-date-type" value="${opt.value}" ${savedDateType === opt.value ? 'checked' : ''} />
-              ${opt.label}
-            </label>
-          `).join('')}
-        </div>
-      </div>
-
-      <div class="dsh-field">
-        <label>시작일</label>
-        <div class="dsh-radio-group">${radioHTML}</div>
-      </div>
-
-      <div class="dsh-field">
-        <label>팀</label>
-        <div class="dsh-check-group">
-          ${TEAM_OPTIONS.map(opt => `
-            <label class="dsh-check-label">
-              <input type="checkbox" name="dsh-team" value="${opt.value}" ${savedTeams.includes(opt.value) ? 'checked' : ''} />
-              ${opt.label}
-            </label>
-          `).join('')}
-        </div>
-      </div>
-
-      <div class="dsh-field">
-        <label>처리상태</label>
-        <div class="dsh-check-group">
-          ${PROGRESSION_OPTIONS.map(opt => `
-            <label class="dsh-check-label">
-              <input type="checkbox" name="dsh-prog" value="${opt.value}" ${savedProgression.includes(opt.value) ? 'checked' : ''} />
-              ${opt.label}
-            </label>
-          `).join('')}
-        </div>
-      </div>
-
-      <div class="dsh-field">
-        <label>정렬 기준</label>
-        <div class="dsh-radio-group">
-          ${SORT_COL_OPTIONS.map(opt => `
-            <label class="dsh-radio-label">
-              <input type="radio" name="dsh-sort-col" value="${opt.value}" ${savedSortCol === opt.value ? 'checked' : ''} />
-              ${opt.label}
-            </label>
-          `).join('')}
-        </div>
-        <div id="dsh-sort-dir-row" class="dsh-radio-group" style="margin-top:6px; ${savedSortCol === 'none' ? 'display:none' : ''}">
-          <label class="dsh-radio-label">
-            <input type="radio" name="dsh-sort-dir" value="asc" ${savedSortDir === 'asc' ? 'checked' : ''} />
-            오름차순
-          </label>
-          <label class="dsh-radio-label">
-            <input type="radio" name="dsh-sort-dir" value="desc" ${savedSortDir === 'desc' ? 'checked' : ''} />
-            내림차순
-          </label>
-        </div>
-      </div>
-
-      <div class="dsh-field dsh-toggle-row">
-        <span>화면 진입 시 자동 설정</span>
-        <label class="dsh-toggle">
-          <input type="checkbox" id="dsh-auto" ${savedAuto ? 'checked' : ''} />
-          <span class="dsh-toggle-slider"></span>
-        </label>
-      </div>
-
-      <div id="dsh-actions">
-        <button id="dsh-cancel">닫기</button>
-        <button id="dsh-save">저장</button>
-        <button id="dsh-apply">저장 & 조회</button>
-      </div>
-    </div>
-  `;
-
-  document.body.appendChild(overlay);
-
-  // 정렬 기준 변경 시 방향 행 표시/숨김
-  document.querySelectorAll('input[name="dsh-sort-col"]').forEach(radio => {
-    radio.addEventListener('change', () => {
-      const dirRow = document.getElementById('dsh-sort-dir-row');
-      if (dirRow) dirRow.style.display = radio.value === 'none' ? 'none' : '';
-    });
-  });
-
-  // 팀 전체 토글
-  document.querySelectorAll('input[name="dsh-team"]').forEach(cb => {
-    cb.addEventListener('change', () => {
-      if (cb.value === '' && cb.checked) {
-        document.querySelectorAll('input[name="dsh-team"]').forEach(c => { c.checked = c.value !== ''; });
-      } else if (cb.value !== '') {
-        const all = document.querySelector('input[name="dsh-team"][value=""]');
-        if (all) all.checked = false;
-      }
-    });
-  });
-
-  document.getElementById('dsh-cancel').addEventListener('click', closeSearchModal);
-  document.getElementById('dsh-save').addEventListener('click', saveSearchSettings);
-  document.getElementById('dsh-apply').addEventListener('click', saveAndSearch);
-}
-
-function closeSearchModal() {
-  document.getElementById('dsh-overlay')?.remove();
-}
-
-function saveSearchSettings() {
-  const processer   = document.getElementById('dsh-processer')?.value.trim();
-  const days        = document.querySelector('input[name="dsh-days"]:checked')?.value || '10';
-  const auto        = document.getElementById('dsh-auto')?.checked ? 'true' : 'false';
-  const teams       = Array.from(document.querySelectorAll('input[name="dsh-team"]:checked')).map(c => c.value);
-  const progression = Array.from(document.querySelectorAll('input[name="dsh-prog"]:checked')).map(c => c.value);
-  const sortCol     = document.querySelector('input[name="dsh-sort-col"]:checked')?.value || 'status';
-  const sortDir     = document.querySelector('input[name="dsh-sort-dir"]:checked')?.value || 'desc';
-  const dateType    = document.querySelector('input[name="dsh-date-type"]:checked')?.value || 'R';
-  setCookie(COOKIE_PROCESSER,   processer);
-  setCookie(COOKIE_DAYS,        days);
-  setCookie(COOKIE_AUTO,        auto);
-  setCookie(COOKIE_TEAMS,       JSON.stringify(teams));
-  setCookie(COOKIE_PROGRESSION, JSON.stringify(progression));
-  setCookie(COOKIE_SORT_COL,    sortCol);
-  setCookie(COOKIE_SORT_DIR,    sortDir);
-  setCookie(COOKIE_DATE_TYPE,   dateType);
-}
-
-function saveAndSearch() {
-  saveSearchSettings();
-  closeSearchModal();
-  applyAndSearch();
-}
 
 function sortAfterLoad() {
   // applySort가 여러 번 불리면 토글이 간섭 → 한 번만 실행
