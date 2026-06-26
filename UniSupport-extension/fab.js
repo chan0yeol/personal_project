@@ -1502,7 +1502,6 @@
     const colOptions = [
       { key: 'support_cases_hyde',     label: '문의' },
       { key: 'support_answers_hybrid', label: '처리내역' },
-      { key: 'support_full',           label: '전체유형' },
     ];
     colOptions.forEach(({ key, label }) => {
       const btn = document.createElement('button');
@@ -1536,18 +1535,6 @@
 
     const resultWrap = el('div', { display: 'flex', flexDirection: 'column', gap: '8px' });
     body.appendChild(resultWrap);
-
-    let lastRefinedQuery = '';
-    let lastRawQuery     = '';
-
-    async function sendFeedback(caseId, positive) {
-      try {
-        await relayFetch(`${AI_BASE}/feedback`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ case_id: caseId, positive, query: lastRawQuery, refined_query: lastRefinedQuery }),
-        });
-      } catch (e) { console.warn('피드백 전송 실패', e); }
-    }
 
     function renderResults(cases, refinedQuery = '') {
       resultWrap.innerHTML = '';
@@ -1599,13 +1586,6 @@
         });
         hdr.appendChild(detailBtn);
 
-        const draftBtn = el('button', {
-          fontSize: '11px', fontWeight: '600', padding: '1px 8px',
-          background: '#eef2ff', border: '1px solid #c7d2fe', color: P,
-          borderRadius: '5px', cursor: 'pointer',
-        }, '초안 생성');
-        hdr.appendChild(draftBtn);
-
         const score = Math.round(c.score * 1000) / 10;
         const [scoreBg, scoreColor] = score >= 70 ? ['#dcfce7','#15803d'] : score >= 50 ? ['#fef9c3','#a16207'] : ['#f1f5f9','#64748b'];
         hdr.appendChild(el('span', {
@@ -1625,78 +1605,6 @@
           docEl.textContent = c.doc.slice(0, 200) + (c.doc.length > 200 ? '…' : '');
           card.appendChild(docEl);
         }
-
-        // 👍/👎 피드백 버튼
-        const fbWrap = el('div', { display: 'flex', gap: '6px', justifyContent: 'flex-end', marginTop: '4px' });
-        let voted = null;
-        const mkBtn = (label, positive) => {
-          const btn = el('button', {
-            fontSize: '11px', padding: '2px 10px', borderRadius: '12px', cursor: 'pointer',
-            border: '1px solid #e2e8f0', background: '#f8fafc', color: '#64748b',
-          }, label);
-          btn.addEventListener('click', async () => {
-            if (voted !== null) return;
-            voted = positive;
-            await sendFeedback(c.case_id, positive);
-            btn.style.background   = positive ? '#dcfce7' : '#fee2e2';
-            btn.style.color        = positive ? '#16a34a' : '#dc2626';
-            btn.style.borderColor  = positive ? '#86efac' : '#fca5a5';
-          });
-          return btn;
-        };
-        fbWrap.appendChild(mkBtn('👍 도움됨', true));
-        fbWrap.appendChild(mkBtn('👎 아님',  false));
-        card.appendChild(fbWrap);
-
-        // 초안 생성 결과 영역 (기본 숨김)
-        const draftWrap = el('div', { display: 'none', flexDirection: 'column', gap: '6px' });
-        const draftArea = document.createElement('textarea');
-        css(draftArea, {
-          width: '100%', boxSizing: 'border-box', resize: 'vertical', minHeight: '120px',
-          padding: '8px 10px', border: '1.5px solid #e2e8f0', borderRadius: '8px',
-          outline: 'none', fontSize: '12.5px', color: '#0f172a', background: '#fff',
-          fontFamily: 'inherit', lineHeight: '1.6',
-        });
-        const draftActions = el('div', { display: 'flex', justifyContent: 'flex-end' });
-        const copyBtn = el('button', {
-          fontSize: '11px', fontWeight: '600', padding: '3px 10px',
-          background: '#f1f5f9', border: '1px solid #e2e8f0', color: '#475569',
-          borderRadius: '6px', cursor: 'pointer',
-        }, '복사');
-        copyBtn.addEventListener('click', () => {
-          navigator.clipboard.writeText(draftArea.value).then(() => {
-            copyBtn.textContent = '복사됨';
-            setTimeout(() => { copyBtn.textContent = '복사'; }, 1200);
-          });
-        });
-        draftActions.appendChild(copyBtn);
-        draftWrap.appendChild(draftArea);
-        draftWrap.appendChild(draftActions);
-        card.appendChild(draftWrap);
-
-        draftBtn.addEventListener('click', async () => {
-          if (draftWrap.style.display === 'flex') { draftWrap.style.display = 'none'; return; }
-          draftBtn.disabled = true;
-          draftBtn.textContent = '생성 중...';
-          try {
-            const res = await relayFetch(`${AI_BASE}/draft`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ query: lastRawQuery, case_id: c.case_id, collection: selectedCol }),
-              timeout: 30000,
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.detail || '초안 생성 실패');
-            draftArea.value = data.draft || '';
-            draftWrap.style.display = 'flex';
-          } catch (e) {
-            draftArea.value = `오류: ${e.message}`;
-            draftWrap.style.display = 'flex';
-          } finally {
-            draftBtn.disabled = false;
-            draftBtn.textContent = '초안 생성';
-          }
-        });
 
         resultWrap.appendChild(card);
       });
@@ -1724,8 +1632,6 @@
           timeout: 30000,
         });
         const data = await res.json();
-        lastRawQuery     = query;
-        lastRefinedQuery = data.refined_query || '';
         renderResults(data.cases || [], data.refined_query || '');
       } catch (e) {
         resultWrap.innerHTML = `<div style="color:#dc2626;font-size:13px;padding:12px">오류: ${e.message}</div>`;
